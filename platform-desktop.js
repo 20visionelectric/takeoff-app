@@ -55,7 +55,7 @@
   function showGate(reason) {
     openDialog('<div class="dlg-h"><h3>Subscribe to use your own jobs</h3></div><div class="dlg-b">' +
       '<p style="margin:0;line-height:1.55">' + (reason || "Your own jobs need a subscription.") + ' The tutorial and practice drawing stay free.</p>' +
-      '<ul style="margin:0;padding-left:18px;line-height:1.7"><li>Count symbols on every sheet, read legends, trace conduit runs</li><li>Markups, revision compare and adds/omits</li><li>Quote and itemized takeoff to Word, PDF and Excel</li><li>CA$7.99 a month, cancel any time. Use it on 2 computers.</li></ul>' +
+      '<ul style="margin:0;padding-left:18px;line-height:1.7"><li>Count symbols on every sheet, read legends, trace conduit runs</li><li>Markups, revision compare and adds/omits</li><li>Quote and itemized takeoff to Word, PDF and Excel</li><li>CA$9.99 a month, or CA$99 a year (save 17%). Cancel any time. Use it on 2 computers.</li></ul>' +
       '<p class="muted" style="margin:0;font-size:13px">Already subscribed? Paste the licence key from your receipt email.</p>' +
       '<div class="row"><input class="inp" id="dkCode" placeholder="Licence key" style="flex:1" autocomplete="off" spellcheck="false"><button class="btn" id="dkCodeGo">Unlock</button></div>' +
       '<p class="muted" id="dkMsg" style="margin:0;font-size:12.5px"></p></div>' +
