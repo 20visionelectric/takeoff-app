@@ -92,6 +92,17 @@ h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;margi
 .save-state{font-size:12px;color:var(--muted);white-space:nowrap}
 .spacer{flex:1}
 .main{display:grid;grid-template-columns:232px minmax(0,1fr) 360px;min-height:0}
+@media (min-width:861px){
+  .main.no-rail{grid-template-columns:minmax(0,1fr) 360px}
+  .main.no-side{grid-template-columns:232px minmax(0,1fr)}
+  .main.no-rail.no-side{grid-template-columns:minmax(0,1fr)}
+  .main.no-rail .rail,.main.no-side .side{display:none}
+}
+.pane-tog{position:absolute;top:50%;transform:translateY(-50%);z-index:4;width:22px;height:56px;padding:0;border:1px solid var(--line);background:var(--panel);color:var(--muted);display:grid;place-items:center;box-shadow:var(--shadow);cursor:pointer}
+.pane-tog:hover{color:var(--blue);border-color:var(--blue)}
+.pane-tog.l{left:0;border-radius:0 8px 8px 0;border-left:0}
+.pane-tog.r{right:0;border-radius:8px 0 0 8px;border-right:0}
+@media (max-width:860px){.pane-tog{display:none}}
 .rail{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
 .rail-head{display:flex;align-items:center;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .rail-body{overflow:auto;padding:8px;display:flex;flex-direction:column;gap:12px;flex:1}
@@ -301,6 +312,8 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
     <div class="viewer" id="viewer">
       <canvas id="cv"></canvas>
       <div class="toolbar" id="toolbar"></div>
+      <button class="pane-tog l" id="togRail" title="Hide sheets panel ([)" aria-label="Hide sheets panel">‹</button>
+      <button class="pane-tog r" id="togSide" title="Hide side panel (])" aria-label="Hide side panel">›</button>
       <div class="subbar" id="subbar" hidden></div>
       <div class="hint" id="hint"></div>
       <div class="zoombar">
@@ -593,6 +606,29 @@ function resample(t,s){if(Math.abs(s-1)<0.01)return t;const W=Math.max(3,Math.ro
 function prep(t){let s=0;for(const v of t.d)s+=v;const m=s/t.d.length;const z=new Float32Array(t.d.length);let n2=0;for(let i=0;i<z.length;i++){z[i]=t.d[i]-m;n2+=z[i]*z[i];}return{z,norm:Math.sqrt(n2),sum:s,w:t.w,h:t.h};}
 function integ(a,w,h){const W=w+1,I=new Float64Array(W*(h+1)),I2=new Float64Array(W*(h+1));
  for(let y=0;y<h;y++){let r=0,r2=0;for(let x=0;x<w;x++){const v=a[y*w+x];r+=v;r2+=v*v;I[(y+1)*W+x+1]=I[y*W+x+1]+r;I2[(y+1)*W+x+1]=I2[y*W+x+1]+r2;}}return{I,I2,W};}
+function maskOf(t,mx){const{d,w,h}=t,m=new Uint8Array(w*h);for(let i=0;i<d.length;i++)if(d[i]>mx*0.18)m[i]=1;const o=new Uint8Array(w*h);
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){if(!m[y*w+x])continue;for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const X=x+i,Y=y+j;if(X>=0&&Y>=0&&X<w&&Y<h)o[Y*w+X]=1;}}return o;}
+function regOf(t,sel){const ox=[],oy=[],vals=[];for(let y=0;y<t.h;y++)for(let x=0;x<t.w;x++)if(sel(x,y)){ox.push(x);oy.push(y);vals.push(t.d[y*t.w+x]);}
+ const n=vals.length;let s=0;for(const v of vals)s+=v;const m=n?s/n:0;const z=new Float32Array(n);let n2=0;for(let k=0;k<n;k++){z[k]=vals[k]-m;n2+=z[k]*z[k];}
+ return{ox:Int16Array.from(ox),oy:Int16Array.from(oy),z,norm:Math.sqrt(n2),mean:m,std:n?Math.sqrt(n2/n):0,n};}
+function insideOf(t,mx,er){const{d,w,h}=t,ink=new Uint8Array(w*h);for(let i=0;i<d.length;i++)if(d[i]>mx*0.18)ink[i]=1;
+ const out=new Uint8Array(w*h),st=[];const push=(x,y)=>{if(x<0||y<0||x>=w||y>=h)return;const i=y*w+x;if(out[i]||ink[i])return;out[i]=1;st.push(i);};
+ for(let x=0;x<w;x++){push(x,0);push(x,h-1);}for(let y=0;y<h;y++){push(0,y);push(w-1,y);}
+ while(st.length){const i=st.pop(),x=i%w,y=(i/w)|0;push(x+1,y);push(x-1,y);push(x,y+1);push(x,y-1);}
+ const o=new Uint8Array(w*h);for(let y=0;y<h;y++)for(let x=0;x<w;x++){let ok=!out[y*w+x];
+  for(let j=-er;ok&&j<=er;j++)for(let i=-er;ok&&i<=er;i++){const X=x+i,Y=y+j;if(X<0||Y<0||X>=w||Y>=h||out[Y*w+X])ok=false;}
+  if(ok&&ink[y*w+x]){let edge=false;for(let j=-er;!edge&&j<=er;j++)for(let i=-er;!edge&&i<=er;i++){const X=x+i,Y=y+j;if(X>=0&&Y>=0&&X<w&&Y<h&&out[Y*w+X])edge=true;}if(edge)ok=false;}
+  if(ok)o[y*w+x]=1;}return o;}
+function lineFree(P,pw,x,y,M,t){const n=M.n,R={},Rt={},C={},Ct={},TR=M.tr,TC=M.tc;for(let k=0;k<n;k++){const r=M.oy[k],c=M.ox[k];Rt[r]=(Rt[r]||0)+1;Ct[c]=(Ct[c]||0)+1;
+  if(P[(y+r)*pw+x+c]>t){R[r]=(R[r]||0)+1;C[c]=(C[c]||0)+1;}}
+ const keep=new Uint8Array(n);let m=0;for(let k=0;k<n;k++){const r=M.oy[k],c=M.ox[k];const lr=(R[r]||0)>Rt[r]*0.7&&(TR[r]||0)<Rt[r]*0.4,lc=(C[c]||0)>Ct[c]*0.7&&(TC[c]||0)<Ct[c]*0.4;if(!lr&&!lc){keep[k]=1;m++;}}
+ return{keep,m};}
+function coreFit(P,pw,x,y,M,t){const L=lineFree(P,pw,x,y,M,t);if(L.m<6)return{cs:-1,dc:0};let s=0,s2=0,num=0,zs=0,zz=0;const n=L.m;
+ for(let k=0;k<M.n;k++){if(!L.keep[k])continue;const v=P[(y+M.oy[k])*pw+x+M.ox[k]];s+=v;s2+=v*v;num+=M.z[k]*v;zs+=M.z[k];zz+=M.z[k]*M.z[k];}
+ const vr=s2-s*s/n,tv=zz-zs*zs/n,nm=num-zs*s/n;return{cs:(vr>1e-6&&tv>1e-6)?nm/Math.sqrt(vr*tv):-1,dc:s/n};}
+function mncc(P,pw,x,y,M){if(!M||M.n<6||M.norm<=1e-6)return -1;let s=0,s2=0,num=0;const n=M.n;for(let k=0;k<n;k++){const v=P[(y+M.oy[k])*pw+x+M.ox[k]];s+=v;s2+=v*v;num+=M.z[k]*v;}
+ const vr=s2-s*s/n;if(vr<=1e-6)return -1;return num/(M.norm*Math.sqrt(vr));}
+function mmean(P,pw,x,y,M){if(!M||!M.n)return 0;let s=0;for(let k=0;k<M.n;k++)s+=P[(y+M.oy[k])*pw+x+M.ox[k]];return s/M.n;}
 function nccAt(P,pw,T,x,y){let s=0,s2=0,num=0;const n=T.w*T.h;for(let j=0;j<T.h;j++){const po=(y+j)*pw+x,to=j*T.w;for(let i=0;i<T.w;i++){const v=P[po+i];s+=v;s2+=v*v;num+=T.z[to+i]*v;}}
  const vr=s2-s*s/n;if(vr<=1e-6||T.norm<=1e-6)return -1;return num/(T.norm*Math.sqrt(vr));}
 onmessage=(e)=>{const{id,page,tpl,opts}=e.data;try{
@@ -606,18 +642,28 @@ onmessage=(e)=>{const{id,page,tpl,opts}=e.data;try{
  const excl=(opts.excl||[]);const inEx=(x,y)=>{for(const r of excl)if(x>=r[0]&&x<=r[0]+r[2]&&y>=r[1]&&y<=r[1]+r[3])return true;return false;};
  let found=[];let vi=0;
  for(const V of vars){vi++;const Tc=prep(down(V.t.d,V.t.w,V.t.h,f));const Tm=prep(down(V.t.d,V.t.w,V.t.h,fm));const tw=Tc.w,th=Tc.h,n=tw*th;
-  if(tw<3||th<3||tw>=C.w||th>=C.h)continue;const lo=Tc.sum*0.45,hi=Tc.sum*2.3,W=In.W,I=In.I,I2=In.I2;const cand=[];
+  const Rw=down(V.t.d,V.t.w,V.t.h,fm);let mxv=0;for(const q of Rw.d)if(q>mxv)mxv=q;const FM=maskOf(Rw,mxv);
+  const Msk=regOf(Rw,(x,y)=>FM[y*Rw.w+x]===1);const All=regOf(Rw,()=>true);
+  const IN=insideOf(Rw,mxv,Math.max(1,Math.round(5/fm)));const Core=regOf(Rw,(x,y)=>IN[y*Rw.w+x]===1);
+  Core.tr={};Core.tc={};for(let k=0;k<Core.n;k++){if(Core.z[k]+Core.mean>mxv*0.3){Core.tr[Core.oy[k]]=(Core.tr[Core.oy[k]]||0)+1;Core.tc[Core.ox[k]]=(Core.tc[Core.ox[k]]||0)+1;}}
+  const hasDetail=Core.n>=6&&Core.std>mxv*0.1;
+  if(tw<3||th<3||tw>=C.w||th>=C.h)continue;const lo=Tc.sum*0.45,hi=Tc.sum*3.2,W=In.W,I=In.I,I2=In.I2;const cand=[];
   for(let y=0;y<=C.h-th;y++){for(let x=0;x<=C.w-tw;x++){const a=y*W+x,b=y*W+x+tw,c=(y+th)*W+x,d=(y+th)*W+x+tw;const s=I[d]-I[b]-I[c]+I[a];if(s<lo||s>hi)continue;
     const s2=I2[d]-I2[b]-I2[c]+I2[a];const vr=s2-s*s/n;if(vr<=1e-3)continue;let num=0;for(let j=0;j<th;j++){const po=(y+j)*C.w+x,to=j*tw;for(let i=0;i<tw;i++)num+=Tc.z[to+i]*C.d[po+i];}
     const v=num/(Tc.norm*Math.sqrt(vr));if(v>=cthr)cand.push([x,y,v]);}}
-  cand.sort((a,b)=>b[2]-a[2]);const keep=[],rad=Math.max(2,Math.min(tw,th)*0.5);
+  cand.sort((a,b)=>b[2]-a[2]);const keep=[],rad=Math.max(2,Math.min(tw,th)*0.38);
   for(const c of cand){let ok=true;for(const k of keep){if(Math.abs(k[0]-c[0])<rad&&Math.abs(k[1]-c[1])<rad){ok=false;break;}}if(ok)keep.push(c);if(keep.length>4000)break;}
   const sr=Math.ceil(f/fm)+1;
   for(const c of keep){const mx0=Math.round(c[0]*f/fm),my0=Math.round(c[1]*f/fm);let best=-1,bx=mx0,by=my0;
    for(let dy=-sr;dy<=sr;dy++)for(let dx=-sr;dx<=sr;dx++){const x=mx0+dx,y=my0+dy;if(x<0||y<0||x+Tm.w>Mi.w||y+Tm.h>Mi.h)continue;const v=nccAt(Mi.d,Mi.w,Tm,x,y);if(v>best){best=v;bx=x;by=y;}}
-   if(best>=maybe){const cx=(bx+Tm.w/2)*fm,cy=(by+Tm.h/2)*fm;if(!inEx(cx,cy))found.push({x:cx,y:cy,w:Tm.w*fm,h:Tm.h*fm,s:best,r:V.rot});}}
+   if(best<cthr)continue;
+   let sc=Math.max(best,mncc(Mi.d,Mi.w,bx,by,Msk)-0.04);
+   if(Core.n>=6){const F=coreFit(Mi.d,Mi.w,bx,by,Core,mxv*0.3);
+    if(hasDetail)sc=Math.min(sc,F.cs-0.12);
+    else if(F.dc>Core.mean+mxv*0.06)sc=Math.min(sc,maybe-0.02);}
+   if(sc>=maybe){const cx=(bx+Tm.w/2)*fm,cy=(by+Tm.h/2)*fm;if(!inEx(cx,cy))found.push({x:cx,y:cy,w:Tm.w*fm,h:Tm.h*fm,s:sc,sf:best,r:V.rot});}}
   postMessage({id,progress:vi/vars.length});}
- found.sort((a,b)=>b.s-a.s);const out=[];const R=Math.max(T0.w,T0.h)*0.55;
+ found.sort((a,b)=>b.s-a.s);const out=[];const R=Math.min(T0.w,T0.h)*0.42;
  for(const m of found){let ok=true;for(const k of out){if(Math.abs(k.x-m.x)<R&&Math.abs(k.y-m.y)<R){ok=false;break;}}if(ok)out.push(m);}
  postMessage({id,done:true,matches:out});}catch(err){postMessage({id,error:String(err&&err.message||err)});}};`;
 let matcher = null, matchSeq = 0; const matchCbs = {};
@@ -656,22 +702,52 @@ async function countItem(item, scopePages, { quiet = false } = {}) {
         const opts = { thr: thrOf(item.sens ?? 6), band: 0.09, rotate: item.rotate !== false, mirror: !!item.mirror, multiScale: !!item.multiScale, tscale: r.ppt / tp.ppt, excl };
         let res; try { res = await runMatch(g, r.canvas.width, r.canvas.height, { g: tg, w: tp.w, h: tp.h }, opts); } catch (e) { if (stopFlag) break; throw e; }
         for (const m of res) {
-          const x = m.x / r.ppt, y = m.y / r.ppt, rad = Math.max(m.w, m.h) / r.ppt * 0.45;
-          if (existing.some(o => Math.hypot(o.x - x, o.y - y) < rad && (o.item === item.id || o.src !== "auto" || (o.s || 0) >= m.s))) continue;
+          const x = m.x / r.ppt, y = m.y / r.ppt, rad = Math.min(m.w, m.h) / r.ppt * 0.4;
+          const mf = m.sf ?? m.s; if (existing.some(o => Math.hypot(o.x - x, o.y - y) < rad && (o.item === item.id || o.src !== "auto" || (o.sf ?? o.s ?? 0) >= mf))) continue;
           // a different item's weaker auto mark at same spot loses
-          P().marks = P().marks.filter(o => !(o.page === pg.id && o.item !== item.id && o.src === "auto" && Math.hypot(o.x - x, o.y - y) < rad && (o.s || 0) < m.s));
-          const rec = { id: uid(), item: item.id, page: pg.id, x, y, s: +m.s.toFixed(3), src: "auto", w: m.w / r.ppt, h: m.h / r.ppt };
+          P().marks = P().marks.filter(o => !(o.page === pg.id && o.item !== item.id && o.src === "auto" && Math.hypot(o.x - x, o.y - y) < rad && (o.sf ?? o.s ?? 0) < mf));
+          const rec = { id: uid(), item: item.id, page: pg.id, x, y, s: +m.s.toFixed(3), sf: +mf.toFixed(3), src: "auto", w: m.w / r.ppt, h: m.h / r.ppt };
           if (m.s >= opts.thr) { P().marks.push(rec); existing.push(rec); added++; }
           else maybes.push(rec);
         }
       }
       const done = P().marks.filter(o => o.page === pg.id);
-      maybes = maybes.filter(m => m.page !== pg.id || !done.some(o => Math.hypot(o.x - m.x, o.y - m.y) < Math.max(m.w || 10, m.h || 10) * 0.6));
+      maybes = maybes.filter(m => m.page !== pg.id || !done.some(o => Math.hypot(o.x - m.x, o.y - m.y) < Math.min(m.w || 10, m.h || 10) * 0.45));
       if (pg.id === page()?.id) draw();
     }
   } finally { busy(false); }
   item.maybes = maybes;
   return { n: added, maybe: maybes.length };
+}
+
+/* ------------------------- Sharp zoom: re-render what's on screen ------------------------- */
+let hiT = null, hiJob = 0, hiTask = null;
+function visRect(pg) {
+  const el = cv(); const [x0, y0] = toPt(0, 0), [x1, y1] = toPt(el.width / dpr, el.height / dpr);
+  const pw = (x1 - x0) * 0.12, ph = (y1 - y0) * 0.12;
+  const a = Math.max(0, x0 - pw), b = Math.max(0, y0 - ph), c = Math.min(pg.w, x1 + pw), d = Math.min(pg.h, y1 + ph);
+  return c > a && d > b ? [a, b, c - a, d - b] : null;
+}
+function wantHi(pg, hit) {
+  const doc = docOf(pg); if (!doc || doc.kind !== "pdf") { S.hi = null; return; }
+  const need = Math.min(S.zoom * dpr, 12); if (need <= hit.ppt * 1.08) { if (S.hi) S.hi = null; return; }
+  const r = visRect(pg); if (!r) return; const h = S.hi;
+  if (h && h.pg === pg.id && Math.abs(h.scale - need) / need < 0.04 && r[0] >= h.rect[0] - 0.5 && r[1] >= h.rect[1] - 0.5 && r[0] + r[2] <= h.rect[0] + h.rect[2] + 0.5 && r[1] + r[3] <= h.rect[1] + h.rect[3] + 0.5) return;
+  clearTimeout(hiT); hiT = setTimeout(() => renderHi(pg, need, visRect(pg)), 160);
+}
+async function renderHi(pg, scale, rect) {
+  if (!rect) return; const job = ++hiJob;
+  try {
+    if (hiTask) { try { hiTask.cancel(); } catch (e) { } hiTask = null; }
+    let sc = scale; const maxPx = 14e6; if (rect[2] * rect[3] * sc * sc > maxPx) sc = Math.sqrt(maxPx / (rect[2] * rect[3]));
+    const pdf = await getPdf(docOf(pg)); const pp = await pdf.getPage(pg.index + 1); if (job !== hiJob) return;
+    const W = Math.ceil(rect[2] * sc), H = Math.ceil(rect[3] * sc); const c = document.createElement("canvas"); c.width = W; c.height = H;
+    const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+    hiTask = pp.render({ canvasContext: g, viewport: pp.getViewport({ scale: sc }), transform: [1, 0, 0, 1, -rect[0] * sc, -rect[1] * sc], canvas: c });
+    await hiTask.promise; hiTask = null;
+    if (job !== hiJob || page()?.id !== pg.id) return;
+    S.hi = { pg: pg.id, scale, rect: [rect[0], rect[1], W / sc, H / sc], canvas: c }; draw();
+  } catch (e) { if (!/cancel/i.test(String(e && (e.name || e.message)))) console.warn("hi-res", e); }
 }
 
 /* ------------------------- Viewer drawing ------------------------- */
@@ -696,6 +772,7 @@ function drawNow() {
   g.save(); g.shadowColor = "rgba(0,0,0,.25)"; g.shadowBlur = 12 / S.zoom; g.fillStyle = "#fff"; g.fillRect(0, 0, pg.w, pg.h); g.restore();
   if (hit) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(hit.canvas, 0, 0, pg.w, pg.h); }
   if (S.compare) return drawOverlayUI(g);
+  if (hit) { const h2 = S.hi; if (h2 && h2.pg === pg.id) g.drawImage(h2.canvas, h2.rect[0], h2.rect[1], h2.rect[2], h2.rect[3]); wantHi(pg, hit); }
   const z = S.zoom, px = 1 / z;
   // exclusion zones
   for (const e of pg.excl || []) {
@@ -1052,7 +1129,7 @@ function scaleCanvas(c, maxDim) { const s = Math.min(1, maxDim / Math.max(c.widt
 function liveMaybes(it) {
   if (!it?.maybes?.length) return [];
   const byPage = {}; for (const o of P().marks) (byPage[o.page] ||= []).push(o);
-  it.maybes = it.maybes.filter(m => !(byPage[m.page] || []).some(o => Math.hypot(o.x - m.x, o.y - m.y) < Math.max(m.w || 10, m.h || 10) * 0.6));
+  it.maybes = it.maybes.filter(m => !(byPage[m.page] || []).some(o => Math.hypot(o.x - m.x, o.y - m.y) < Math.min(m.w || 10, m.h || 10) * 0.45));
   return it.maybes;
 }
 function reportCount(it, res) {
@@ -1062,6 +1139,12 @@ function reportCount(it, res) {
 }
 
 /* ------------------------- Review possible matches ------------------------- */
+function resolveAllMaybes(yes, only) {
+  const items = (only ? [only] : P().items).filter(i => liveMaybes(i).length); if (!items.length) return;
+  commit(); let n = 0;
+  for (const it of items) { if (yes) for (const m of it.maybes) { P().marks.push({ ...m, id: uid(), src: "auto" }); n++; } else n += it.maybes.length; it.maybes = []; }
+  changed({ sheets: true }); toast(yes ? `${n} possible matches counted.` : `${n} possible matches ignored.`, [["Undo", undo]]);
+}
 async function cropsFor(list) {
   const out = [];
   for (const m of list.slice(0, 60)) { const pg = P().pages.find(p => p.id === m.page); const r = await renderPage(pg); const s = Math.max(m.w || 20, m.h || 20) * 1.6 * r.ppt; const c = cropCanvas(r.canvas, m.x * r.ppt - s / 2, m.y * r.ppt - s / 2, s, s); out.push({ m, c: scaleCanvas(c, 160) }); }
@@ -1075,10 +1158,11 @@ async function reviewMaybes(it) {
   openDialog(`<div class="dlg-h"><h3>Possible ${esc(it.name)}</h3><span class="chip amber">${crops.length} to check</span></div>
    <div class="dlg-b"><div class="row"><img src="${tplImg(it.templates[0])}" style="width:56px;height:56px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px"><p style="margin:0;flex:1" class="muted">These look close to your symbol but weren't certain. Click each one that <b>is</b> a ${esc(it.name)}.${S.ai && S.aiImages ? " Or let AI decide." : ""}</p></div>
    <div class="crops" id="crops">${crops.map((c, i) => `<div class="crop" data-i="${i}"><span class="n">${i + 1}</span><img src="${c.c.toDataURL()}" alt="Possible match ${i + 1}"></div>`).join("")}</div><div id="aiNote" class="muted" style="font-size:12.5px"></div></div>
-   <div class="dlg-f">${S.ai && S.aiImages ? '<button class="btn" id="mbAI">Let AI decide</button>' : ""}<button class="btn" id="mbAll">Select all</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="mbOk">Add selected</button></div>`);
+   <div class="dlg-f">${S.ai && S.aiImages ? '<button class="btn" id="mbAI">Let AI decide</button>' : ""}<button class="btn" id="mbAll">Select all</button><button class="btn" id="mbNone">Ignore all</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="mbOk">Add selected</button></div>`);
   const paint = () => $$("#crops .crop").forEach((el, i) => { el.classList.toggle("yes", state[i] === true); el.classList.toggle("no", state[i] === false); });
   $("#crops").onclick = (e) => { const el = e.target.closest(".crop"); if (!el) return; const i = +el.dataset.i; state[i] = state[i] === true ? false : true; paint(); };
   $("#mbAll").onclick = () => { state.fill(true); paint(); };
+  $("#mbNone").onclick = () => { commit(); it.maybes = it.maybes.filter(m => !crops.some(c => c.m === m)); closeDialog(); changed({ sheets: true }); toast(`${crops.length} possible matches ignored.`, [["Undo", undo]]); };
   if ($("#mbAI")) $("#mbAI").onclick = async () => {
     $("#mbAI").disabled = true; $("#aiNote").textContent = "AI is checking each one…";
     try {
@@ -1219,7 +1303,7 @@ function renderTakeoff() {
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
   let h = `<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
    <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Devices</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>`;
-  if (maybeN) h += `<div class="warnbox"><b>${maybeN}</b> possible matches need a look.<span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">${esc(i.name)} (${i.maybes.length})</button>`).join("")}</div>`;
+  if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
   if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> to trace conduit and cable.</div>`;
   for (const cat of CATS) {
     const its = items.filter(i => i.cat === cat); if (!its.length) continue;
@@ -1514,6 +1598,7 @@ const TOUR = [
   { t: "Build the quote", b: "Fill in the client, markup and labour here. The quote updates as you count. Your company details come from Company details on the Jobs screen.", sel: "#side", go: () => { panel("side"); switchTab("quote"); } },
   { t: "Ask AI (optional)", b: "Ask questions about the drawing, check counts, or search the web for product info. On the phone app this uses your own Claude or ChatGPT API key, set in AI settings.", sel: "#side", go: () => { panel("side"); switchTab("ai"); } },
   { t: "Export", b: "Send the quote and itemized takeoff to Word, PDF or Excel, or a marked-up PDF of the drawings.", sel: "#btnExport", go: () => { panel(null); switchTab("takeoff"); } },
+  { t: "More room for the drawing", b: "On a computer, the small tabs on the left and right edges hide the Sheets list and the side panel. Press F to hide both, [ or ] for one.", sel: "#togRail", go: () => panel(null) },
   { t: "Undo and jobs", b: "Undo and Redo fix any mistake. The back arrow takes you to all your jobs. Your own jobs save automatically on this device.", sel: "#btnUndo", go: () => panel(null) },
   { t: "You're ready", b: "Start a blank job or drop in your own drawings from the Jobs screen. Tap ? any time to see this again.", sel: null, end: true },
 ];
@@ -1857,6 +1942,7 @@ function bind() {
   $("#pname").onchange = (e) => { P().name = e.target.value.trim() || "Untitled job"; markDirty(); };
   $("#btnUndo").onclick = undo; $("#btnRedo").onclick = redo; $("#btnExport").onclick = (e) => { e.stopPropagation(); exportMenu(e.currentTarget); };
   $("#btnRail").onclick = () => $("#rail").classList.toggle("open"); $("#btnSide").onclick = () => $("#side").classList.toggle("open");
+  $("#togRail").onclick = () => togglePane("rail"); $("#togSide").onclick = () => togglePane("side"); applyPanes();
   $("#btnCompare").onclick = compareSheets; $("#busyStop").onclick = () => stopMatching();
   $("#zIn").onclick = () => zoomAt(1.25); $("#zOut").onclick = () => zoomAt(0.8); $("#zFit").onclick = fit;
   $("#toolbar").onclick = (e) => { const b = e.target.closest("[data-tool]"); if (b) setTool(b.dataset.tool); };
@@ -1886,6 +1972,7 @@ function bind() {
     if (t("recount")) { const it = itemOf(t("recount").dataset.recount); commit(); countItem(it, P().pages).then(r => { changed({ sheets: true }); reportCount(it, r); }); return; }
     if (t("edit")) return editItem(t("edit").dataset.edit);
     if (t("review")) return reviewMaybes(itemOf(t("review").dataset.review));
+    if (t("mball")) return resolveAllMaybes(t("mball").dataset.mball === "yes");
     if (e.target.id === "addManual") return addManualItem();
     const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure") setTool("measure"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
   };
@@ -1913,11 +2000,23 @@ function bind() {
     if (k === "delete" || k === "backspace") { deleteSel(); return; }
     if (k === "+" || k === "=") return zoomAt(1.25); if (k === "-") return zoomAt(0.8); if (k === "0") return fit();
     if (k === "pagedown") return openPage(S.pageIdx + 1); if (k === "pageup") return openPage(S.pageIdx - 1);
+    if (k === "[") return togglePane("rail"); if (k === "]") return togglePane("side");
+    if (k === "f") { const on = PANES.rail || PANES.side; togglePane("rail", !on); togglePane("side", !on); return; }
     const t = TOOLS.find(t => t !== "|" && t[2].toLowerCase() === k); if (t) setTool(t[0]);
   });
   window.addEventListener("keyup", (e) => { if (e.key === " ") spaceDown = false; });
   window.addEventListener("beforeunload", () => { if (S.proj && !S.proj.sample) saveNow(); });
 }
+let PANES = { rail: true, side: true };
+try { PANES = { ...PANES, ...JSON.parse(localStorage.getItem("tv-panes") || "{}") }; } catch (e) { }
+function applyPanes() {
+  const m = $(".main"); if (!m) return; m.classList.toggle("no-rail", !PANES.rail); m.classList.toggle("no-side", !PANES.side);
+  const l = $("#togRail"), r = $("#togSide");
+  if (l) { l.textContent = PANES.rail ? "‹" : "›"; l.title = (PANES.rail ? "Hide" : "Show") + " sheets panel ([)"; }
+  if (r) { r.textContent = PANES.side ? "›" : "‹"; r.title = (PANES.side ? "Hide" : "Show") + " side panel (])"; }
+  requestAnimationFrame(sizeCanvas);
+}
+function togglePane(k, v) { PANES[k] = v ?? !PANES[k]; try { localStorage.setItem("tv-panes", JSON.stringify(PANES)); } catch (e) { } applyPanes(); }
 function centerOn(x, y) { const r = $("#viewer").getBoundingClientRect(); if (S.zoom < 0.6) S.zoom = 0.9; S.panX = r.width / 2 - x * S.zoom; S.panY = r.height / 2 - y * S.zoom; updZoom(); draw(); }
 function jumpToItem(id) { const pg = page(); if (!pg) return; const onPage = P().marks.some(m => m.item === id && m.page === pg.id) || P().runs.some(r => r.item === id && r.page === pg.id); if (onPage) return; const m = P().marks.find(m => m.item === id) || P().runs.find(r => r.item === id); if (m) { const i = P().pages.findIndex(g => g.id === m.page); if (i >= 0) openPage(i); } }
 
