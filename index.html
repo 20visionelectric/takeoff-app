@@ -726,7 +726,7 @@ function markDirty() { if (!S.proj || S.proj.sample && !S.proj.keep) { setSave(S
 async function saveNow() {
   if (!S.proj) return; if (saving) { saveAgain = true; return; }
   saving = true; setSave("Saving…");
-  const p = S.proj; p.updatedAt = Date.now();
+  const p = S.proj; p.updatedAt = Date.now(); try { logChanges(p); } catch (e) { console.warn("log", e); }
   await IDB.put("projects", p.id, JSON.parse(JSON.stringify(p)));
   let cloudOk = false;
   try { cloudOk = await Cloud.save(p); } catch (e) { cloudOk = false; }
@@ -1310,7 +1310,7 @@ async function saveAsTemplate() {
   const p = P(); const name = (p.name || "Template").replace(/^Copy of /, "");
   const tpl = { id: "t" + uid(), name, trade: p.trade, at: Date.now(), units: p.units, tick: p.tick,
     items: p.items.map(it => ({ ...JSON.parse(JSON.stringify(it)), maybes: [] })),
-    quote: { scope: p.quote.scope, clar: p.quote.clar, excl: p.quote.excl, pay: p.quote.pay, markup: p.quote.markup, labourMode: p.quote.labourMode, rate: p.quote.rate, crew: p.quote.crew, hpd: p.quote.hpd, labourFactor: p.quote.labourFactor, contingency: p.quote.contingency, overhead: p.quote.overhead, profit: p.quote.profit, bond: p.quote.bond, showUnitPrices: p.quote.showUnitPrices } };
+    quote: { conds: p.quote.conds, condV: p.quote.condV, pkgMk: p.quote.pkgMk, scope: p.quote.scope, clar: p.quote.clar, excl: p.quote.excl, pay: p.quote.pay, markup: p.quote.markup, labourMode: p.quote.labourMode, rate: p.quote.rate, crew: p.quote.crew, hpd: p.quote.hpd, labourFactor: p.quote.labourFactor, contingency: p.quote.contingency, overhead: p.quote.overhead, profit: p.quote.profit, bond: p.quote.bond, showUnitPrices: p.quote.showUnitPrices } };
   const list = (await IDB.get("kv", "jobTemplates")) || []; list.unshift(tpl); await IDB.put("kv", "jobTemplates", list.slice(0, 40));
   toast(`Saved "${name}" as a job template. Start your next job from it on the Jobs screen.`);
 }
@@ -1548,17 +1548,21 @@ function qtyOf(it, pages = pagesInScope()) {
   return P().units === "m" ? L : L / M_PER_FT;
 }
 const unitOf = (it) => it.kind === "length" ? (P().units === "m" ? "m" : "ft") : it.kind === "area" ? (P().units === "m" ? "m²" : "sq ft") : (it.unit || "ea");
-function lineCost(it, qty) { const q = P().quote, pr = priceOf(it); const mat = pr != null ? qty * pr : 0; const hrs = it.labour != null ? qty * it.labour * (1 + (+q.labourFactor || 0) / 100) : 0; return { mat, matM: mat * (1 + (+q.markup || 0) / 100), hrs, lab: hrs * (+q.rate || 0) }; }
+const CONDS = [["h12", "Ceilings over 12 ft (ladders)", 10], ["h20", "Work over 20 ft (lift)", 20], ["occ", "Occupied building / work around tenants", 15], ["reno", "Renovation in existing walls", 15], ["night", "Night or after-hours work", 15], ["cold", "Winter / outdoor conditions", 10], ["tight", "Congested ceilings or tight spaces", 10], ["rise", "High-rise (hoisting, travel time)", 5], ["haz", "Hospital, clean room or hazardous area", 20]];
+function condPct(q = P().quote) { return CONDS.reduce((a, [k, , v]) => a + ((q.conds || {})[k] ? (+((q.condV || {})[k] ?? v) || 0) : 0), 0); }
+function labF(q = P().quote) { return (+q.labourFactor || 0) + condPct(q); }
+function pkgSum(q = P().quote) { return (q.pkgs || []).reduce((a, x) => a + (+x.v || 0), 0) * (1 + (+q.pkgMk || 0) / 100); }
+function lineCost(it, qty) { const q = P().quote, pr = priceOf(it); const mat = pr != null ? qty * pr : 0; const hrs = it.labour != null ? qty * it.labour * (1 + labF(q) / 100) : 0; return { mat, matM: mat * (1 + (+q.markup || 0) / 100), hrs, lab: hrs * (+q.rate || 0) }; }
 function markupsOn(base) { const q = P().quote; const cont = base * (+q.contingency || 0) / 100, oh = (base + cont) * (+q.overhead || 0) / 100, pf = (base + cont + oh) * (+q.profit || 0) / 100, bond = (base + cont + oh + pf) * (+q.bond || 0) / 100; return { cont, oh, pf, bond, sell: base + cont + oh + pf + bond }; }
 function totals() {
   const q = P().quote, all = new Set(P().pages.map(p => p.id));
   const alts = P().items.filter(it => it.alt).map(it => { const qty = qtyOf(it, all), qr = it.kind !== "count" ? Math.ceil(qty) : qty, c = lineCost(it, qr); const sell = markupsOn(c.matM + c.lab).sell; return { it, qty: qr, unit: unitOf(it), sell, tax: sell * (+CO.hst || 0) / 100 }; }).filter(a => a.qty > 0);
   const lines = P().items.filter(it => !it.alt).map(it => { const qty = qtyOf(it, all); const qr = it.kind !== "count" ? Math.ceil(qty) : qty; const pr = priceOf(it); return { it, qty: qr, unit: unitOf(it), price: pr, ext: pr != null ? qr * pr : null, hrs: it.labour != null ? qr * it.labour : null }; }).filter(l => l.qty > 0);
   const mat = lines.reduce((a, l) => a + (l.ext || 0), 0), matM = mat * (1 + (+q.markup || 0) / 100);
-  const hrs = (q.labourMode === "crew" ? (+q.crew || 0) * (+q.days || 0) * (+q.hpd || 0) : lines.reduce((a, l) => a + (l.hrs || 0), 0)) * (1 + (+q.labourFactor || 0) / 100);
-  const lab = hrs * (+q.rate || 0), other = +q.other || 0, cost = matM + lab + other; const mk = markupsOn(cost); const sub = mk.sell, tax = sub * (+CO.hst || 0) / 100;
+  const hrs = (q.labourMode === "crew" ? (+q.crew || 0) * (+q.days || 0) * (+q.hpd || 0) : lines.reduce((a, l) => a + (l.hrs || 0), 0)) * (1 + labF(q) / 100);
+  const pkg = pkgSum(q), lab = hrs * (+q.rate || 0), other = +q.other || 0, cost = matM + lab + other + pkg; const mk = markupsOn(cost); const sub = mk.sell, tax = sub * (+CO.hst || 0) / 100;
   const k = cost > 0 ? sub / cost : 1;
-  return { lines, mat, matM, hrs, lab, other, cost, ...mk, k, sub, tax, total: sub + tax, alts, unpriced: lines.filter(l => l.price == null).length };
+  return { lines, mat, matM, hrs, lab, other, pkg, cost, ...mk, k, sub, tax, total: sub + tax, alts, unpriced: lines.filter(l => l.price == null).length };
 }
 
 /* ------------------------- Side panels ------------------------- */
@@ -1614,14 +1618,22 @@ function renderQuote() {
    <label class="field"><span>Labour from</span><select class="inp" data-q="labourMode"><option value="items" ${q.labourMode === "items" ? "selected" : ""}>Hours per item (from the takeoff)</option><option value="crew" ${q.labourMode === "crew" ? "selected" : ""}>Crew size × days</option></select></label>
    <div class="grid2">${f("crew", "Crew size", "number", 'min="0"')}${f("days", "Working days", "number", 'min="0" step="0.5"')}${f("hpd", "Hours per day", "number", 'min="0"')}${f("rate", "Labour rate $/h (internal)", "number", 'min="0" step="0.01"')}</div>
    <div class="grid2">${f("labourFactor", "Labour difficulty % (height, access, occupied site)", "number", 'step="1"')}${f("markup", "Material markup %", "number", 'step="0.5"')}</div>
+   <details ${S.condOpen ? "open" : ""} id="condBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job conditions${condPct(q) ? ` · +${condPct(q)}% labour` : ""}</summary>
+    <p class="muted" style="margin:6px 0;font-size:12px">Tick what applies to this job. Each one adds labour time. The % are starting points: change them to match your crew.</p>
+    ${CONDS.map(([k, l, v]) => `<div class="row" style="gap:6px"><label class="row" style="gap:6px;flex:1;min-width:0"><input type="checkbox" data-cond="${k}" ${(q.conds || {})[k] ? "checked" : ""}> ${l}</label><input class="inp" data-condv="${k}" type="number" step="1" value="${(q.condV || {})[k] ?? v}" style="width:64px" aria-label="${l} %"><span class="muted">%</span></div>`).join("")}</details>
    <div class="grid2">${f("other", "Other costs $", "number", 'step="0.01"')}${f("otherLbl", "Other costs label")}</div>
+   <div class="eyebrow">Supplier and sub quotes (lump sums)</div>
+   <p class="muted" style="margin:0;font-size:12px">For packages priced as one number: lighting package, switchgear, fire alarm or a subcontractor.</p>
+   ${(q.pkgs || []).map((x, i) => `<div class="row" style="gap:6px"><input class="inp" data-pkn="${i}" value="${esc(x.n || "")}" placeholder="Package (e.g. Lighting fixtures)" style="flex:2;min-width:0"><input class="inp" data-pkf="${i}" value="${esc(x.f || "")}" placeholder="Supplier" style="flex:1;min-width:0"><input class="inp" data-pkv="${i}" type="number" step="0.01" value="${x.v ?? ""}" placeholder="$" style="width:96px"><button class="btn ghost sm" data-pkdel="${i}" title="Remove">${svgI("trash", 15)}</button></div>`).join("")}
+   <div class="row"><button class="btn sm" id="pkAdd" type="button">+ Add supplier quote</button>${(q.pkgs || []).length ? f("pkgMk", "Markup on quotes %", "number", 'step="0.5"') : ""}</div>
    <div class="eyebrow">Bid markups (internal, not shown to the client)</div>
    <div class="grid2">${f("contingency", "Contingency %", "number", 'step="0.5"')}${f("overhead", "Overhead %", "number", 'step="0.5"')}${f("profit", "Profit %", "number", 'step="0.5"')}${f("bond", "Bond %", "number", 'step="0.1"')}</div>
    <label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
-   <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour${+q.labourFactor ? ` (incl. ${q.labourFactor}% difficulty)` : ""}</td><td class="r num">${money(t.lab)}</td></tr>${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}${t.cont ? `<tr><td>Contingency</td><td class="r num">${money(t.cont)}</td></tr>` : ""}${t.oh ? `<tr><td>Overhead</td><td class="r num">${money(t.oh)}</td></tr>` : ""}${t.pf ? `<tr><td>Profit</td><td class="r num">${money(t.pf)}</td></tr>` : ""}${t.bond ? `<tr><td>Bond</td><td class="r num">${money(t.bond)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
+   <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour${labF(q) ? ` (incl. ${labF(q)}% difficulty and conditions)` : ""}</td><td class="r num">${money(t.lab)}</td></tr>${t.pkg ? `<tr><td>Supplier and sub quotes</td><td class="r num">${money(t.pkg)}</td></tr>` : ""}${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}${t.cont ? `<tr><td>Contingency</td><td class="r num">${money(t.cont)}</td></tr>` : ""}${t.oh ? `<tr><td>Overhead</td><td class="r num">${money(t.oh)}</td></tr>` : ""}${t.pf ? `<tr><td>Profit</td><td class="r num">${money(t.pf)}</td></tr>` : ""}${t.bond ? `<tr><td>Bond</td><td class="r num">${money(t.bond)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
    ${t.alts.length ? `<div class="eyebrow">Alternates (priced separately)</div><table class="t">${t.alts.map(a => `<tr><td>${esc(a.it.name)} <span class="muted">${fmt(a.qty)} ${a.unit}</span></td><td class="r num">add ${money(a.sell)}</td></tr>`).join("")}</table>` : ""}
    ${bidSummaryHtml(t)}
    ${changeOrderHtml()}
+   ${logHtml()}
    <div class="row">${S.ai ? '<button class="btn" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
 }
@@ -1640,8 +1652,30 @@ function bidSummaryHtml(t) {
   return `<details ${S.breakOpen ? "open" : ""} id="bsBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid summary and breakdowns</summary>
     <div class="row" style="margin-top:6px"><span class="muted" style="font-size:12.5px">Break down by</span><select class="inp" id="bsDim" style="width:auto">${Object.entries(BREAKS).map(([k, v]) => `<option value="${k}" ${k === dim ? "selected" : ""}>${v[0]}</option>`).join("")}</select></div>
     <table class="t"><tr><th style="text-align:left">${BREAKS[dim][0]}</th><th class="r">Material</th><th class="r">Hours</th></tr>${Object.entries(by).sort((a, b) => b[1].mat + b[1].lab - a[1].mat - a[1].lab).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r num">${money(v.mat)}</td><td class="r num">${fmt(v.hrs, 1)}</td></tr>`).join("")}<tr><td><b>Total</b></td><td class="r num"><b>${money(tot.mat)}</b></td><td class="r num"><b>${fmt(tot.hrs, 1)}</b></td></tr></table>
+    ${(() => { const t2 = totals(), a = +P().quote.area || 0, r = (x) => a ? money(x / a) : "-";
+      return `<div class="eyebrow" style="margin-top:6px">Sanity checks</div><label class="field"><span>Building area (sq ft) for cost-per-square-foot</span><input class="inp" id="bsArea" type="number" min="0" value="${a || ""}"></label>
+      <table class="t"><tr><td>Labour : material</td><td class="r num">${t2.matM ? fmt(t2.lab / t2.matM, 2) + " : 1" : "-"}</td></tr><tr><td>Sell price per sq ft</td><td class="r num">${r(t2.sub)}</td></tr><tr><td>Material per sq ft</td><td class="r num">${r(t2.matM)}</td></tr><tr><td>Labour hours per 1,000 sq ft</td><td class="r num">${a ? fmt(t2.hrs / a * 1000, 1) : "-"}</td></tr><tr><td>Material per labour hour</td><td class="r num">${t2.hrs ? money(t2.matM / t2.hrs) : "-"}</td></tr><tr><td>Margin on sell price</td><td class="r num">${t2.sub ? fmt((t2.sub - t2.cost) / t2.sub * 100, 1) + "%" : "-"}</td></tr></table>
+      <p class="muted" style="margin:0;font-size:12px">Compare these with past jobs of the same type. A number far off usually means a missed item or a wrong price.</p>`; })()}
     <p class="muted" style="margin:0;font-size:12px">Set System, Phase / area and Cost code on each item (pencil in the Takeoff list) to break the bid down those ways.</p></details>
     ${jobCostHtml()}`;
+}
+function logChanges(p) {
+  const all = new Set(p.pages.map(g => g.id)), now = {}, prev = p._snap || null, log = p.log ||= [];
+  for (const it of p.items) now[it.id] = { n: it.name, q: Math.round(qtyOf(it, all) * 10) / 10, u: unitOf(it), pr: priceOf(it), l: it.labour };
+  if (prev) {
+    const add = (t) => log.unshift({ at: Date.now(), t });
+    for (const [id, v] of Object.entries(now)) { const o = prev[id];
+      if (!o) add(`Added ${v.n}`);
+      else { if (o.q !== v.q) add(`${v.n}: ${fmt(o.q)} → ${fmt(v.q)} ${v.u}`); if (o.pr !== v.pr) add(`${v.n}: price ${o.pr == null ? "none" : money(o.pr)} → ${v.pr == null ? "none" : money(v.pr)}`); if (o.l !== v.l) add(`${v.n}: labour ${o.l ?? "none"} → ${v.l ?? "none"} h`); if (o.n !== v.n) add(`Renamed ${o.n} → ${v.n}`); } }
+    for (const [id, o] of Object.entries(prev)) if (!now[id]) add(`Deleted ${o.n}`);
+    if (log.length > 400) log.length = 400;
+  }
+  p._snap = now;
+}
+function logHtml() {
+  const log = P().log || []; if (!log.length) return "";
+  return `<details ${S.logOpen ? "open" : ""} id="logBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Change history (${log.length})</summary>
+   <table class="t">${log.slice(0, 120).map(x => `<tr><td class="muted" style="white-space:nowrap;font-size:12px">${new Date(x.at).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</td><td>${esc(x.t)}</td></tr>`).join("")}</table></details>`;
 }
 function jobCostHtml() {
   const p = P(); if (!p.baseline) return "";
@@ -2148,9 +2182,11 @@ async function exportXlsx() {
   const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13, 16, 16, 12, 16, 16], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
   if (s4.length > 1) sheets.splice(1, 0, { name: "Material List", cols: [36, 10, 7, 12, 13], rows: s4 });
   const bs = [H(["Bid summary", "Amount"])]; const add = (k, v) => bs.push([k, { v: Math.round(v * 100) / 100, s: "money" }]);
-  add("Materials (with markup)", t.matM); add("Labour (" + fmt(t.hrs, 1) + " h)", t.lab); if (t.other) add(p.quote.otherLbl || "Other", t.other); if (t.cont) add("Contingency", t.cont); if (t.oh) add("Overhead", t.oh); if (t.pf) add("Profit", t.pf); if (t.bond) add("Bond", t.bond); add("Subtotal", t.sub); add((CO.taxName || "Tax") + " " + CO.hst + "%", t.tax); bs.push([{ v: "TOTAL", s: "b" }, { v: Math.round(t.total * 100) / 100, s: "bmoney" }]);
+  add("Materials (with markup)", t.matM); add("Labour (" + fmt(t.hrs, 1) + " h)", t.lab); if (t.other) add(p.quote.otherLbl || "Other", t.other); for (const x of p.quote.pkgs || []) if (+x.v) add("Quote: " + (x.n || "Package") + (x.f ? " (" + x.f + ")" : ""), +x.v * (1 + (+p.quote.pkgMk || 0) / 100)); if (t.cont) add("Contingency", t.cont); if (t.oh) add("Overhead", t.oh); if (t.pf) add("Profit", t.pf); if (t.bond) add("Bond", t.bond); add("Subtotal", t.sub); add((CO.taxName || "Tax") + " " + CO.hst + "%", t.tax); bs.push([{ v: "TOTAL", s: "b" }, { v: Math.round(t.total * 100) / 100, s: "bmoney" }]);
   for (const a of t.alts) add("Alternate: " + a.it.name, a.sell);
+  if (labF(p.quote)) bs.push(["Labour difficulty and job conditions", labF(p.quote) + "%"]); if (+p.quote.area) { bs.push(["Building area", p.quote.area + " sq ft"]); add("Sell price per sq ft", t.sub / p.quote.area); }
   sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
+  if ((p.log || []).length) sheets.push({ name: "Change History", cols: [22, 70], rows: [H(["When", "Change"]), ...p.log.map(x => [new Date(x.at).toLocaleString("en-CA"), x.t])] });
   const bk = [H(["Breakdown", "Group", "Material", "Labour hours", "Labour $"])];
   for (const d of ["cat", "sys", "phase", "cc", "sheet"]) { const by = breakdown(d); const vals = Object.entries(by); if (d !== "cat" && d !== "sheet" && vals.length === 1 && /^\(no /.test(vals[0][0])) continue; for (const [k, v] of vals) bk.push([BREAKS[d][0], k, { v: Math.round(v.mat * 100) / 100, s: "money" }, { v: Math.round(v.hrs * 100) / 100, s: "dec" }, { v: Math.round(v.lab * 100) / 100, s: "money" }]); }
   sheets.push({ name: "Breakdowns", cols: [16, 34, 14, 14, 14], rows: bk });
@@ -2388,9 +2424,18 @@ function bind() {
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
-  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("change", (e) => { const d = e.target.dataset, q = P().quote;
+    if (d.cond) { (q.conds ||= {})[d.cond] = e.target.checked; S.condOpen = true; }
+    else if (d.condv) { (q.condV ||= {})[d.condv] = +e.target.value || 0; S.condOpen = true; }
+    else if (d.pkn != null) q.pkgs[+d.pkn].n = e.target.value;
+    else if (d.pkf != null) q.pkgs[+d.pkf].f = e.target.value;
+    else if (d.pkv != null) q.pkgs[+d.pkv].v = +e.target.value || 0;
+    else if (e.target.id === "bsArea") { q.area = +e.target.value || 0; S.breakOpen = true; }
+    else return;
+    e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
