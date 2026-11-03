@@ -100,6 +100,8 @@
   window.addFiles = function (files) { if (needsPlan()) return showPaywall("Adding your own drawings needs a subscription."); return baseAddFiles(files); };
   var baseBlank = window.startBlankJob;
   window.startBlankJob = function () { if (needsPlan()) return showPaywall("Starting your own jobs needs a subscription."); return baseBlank(); };
+  var baseTpl = window.newFromTemplate;
+  window.newFromTemplate = function () { if (needsPlan()) return showPaywall("Starting your own jobs needs a subscription."); return baseTpl(); };
   var baseOpenById = window.openProjectById;
   window.openProjectById = function (id) { if (needsPlan()) return showPaywall("Opening your jobs needs a subscription."); return baseOpenById(id); };
 

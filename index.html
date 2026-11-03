@@ -271,6 +271,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
       </div>
       <div class="row">
         <button class="btn" id="btnSettings">Company details</button>
+        <button class="btn" id="btnTpl">Templates</button>
         <button class="btn" id="btnPB">Price book</button>
         <button class="btn" id="btnTutorial">Tutorial</button>
       </div>
@@ -991,7 +992,7 @@ function drawNow() {
     label(g, (mid[0] + nx[0]) / 2, (mid[1] + nx[1]) / 2, (r.circuit ? r.circuit + " · " : "") + lenTxt(runLen(r, pg)), it.color, px);
   }
   // marks
-  const R = 7 * px;
+  const R = (P().tick || 7) * px;
   for (const m of P().marks) {
     if (m.page !== pg.id) continue; const it = itemOf(m.item); if (!it || S.hidden.has(it.id)) continue;
     const on = S.activeItem === it.id, sel = S.sel?.type === "mark" && S.sel.id === m.id;
@@ -1154,7 +1155,9 @@ function updHint() {
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
-  if (S.tool === "measure" || S.tool === "circuit") {
+  if (S.tool === "count" || S.tool === "select") {
+    h = `<span class="eyebrow">Tick size</span><input type="range" id="tickSel" min="4" max="16" step="1" value="${P()?.tick || 7}" style="width:110px" aria-label="Tick size">`;
+  } else if (S.tool === "measure" || S.tool === "circuit") {
     const runs = P()?.items.filter(i => i.kind === "length") || [];
     if (!S.measureItem || !itemOf(S.measureItem)) S.measureItem = runs[0]?.id || null;
     h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
@@ -1291,8 +1294,8 @@ function closePop() { $("#pop")?.remove(); }
 let PB = {};
 const pbKey = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 function pbSave() { IDB.put("kv", "pricebook", PB); }
-function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); return true; }
-function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], at: Date.now() }; pbSave(); }
+function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); for (const k of ["cc", "mfr", "model", "spec"]) if (!it[k] && e[k]) it[k] = e[k]; return true; }
+function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], cc: it.cc, mfr: it.mfr, model: it.model, spec: it.spec, at: Date.now() }; pbSave(); }
 const asmCost = (it) => (it.asm || []).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0);
 const priceOf = (it) => it.asm?.length && it.asm.some(m => m.c !== "" && m.c != null) ? asmCost(it) + (+it.extra || 0) : it.price;
 const ASM_STARTERS = {
@@ -1303,6 +1306,24 @@ const ASM_STARTERS = {
   "Data & comms": [["Low-voltage bracket", 1, "ea"], ["Jack & plate", 1, "ea"], ["Cat6 cable", 60, "ft"]],
   "Conduit & wire": [["Conduit", 1, "ft"], ["Wire (3 conductors)", 3, "ft"], ["Couplings & connectors", 0.1, "ea"], ["Straps", 0.1, "ea"]],
 };
+async function saveAsTemplate() {
+  const p = P(); const name = (p.name || "Template").replace(/^Copy of /, "");
+  const tpl = { id: "t" + uid(), name, trade: p.trade, at: Date.now(), units: p.units, tick: p.tick,
+    items: p.items.map(it => ({ ...JSON.parse(JSON.stringify(it)), maybes: [] })),
+    quote: { scope: p.quote.scope, clar: p.quote.clar, excl: p.quote.excl, pay: p.quote.pay, markup: p.quote.markup, labourMode: p.quote.labourMode, rate: p.quote.rate, crew: p.quote.crew, hpd: p.quote.hpd, labourFactor: p.quote.labourFactor, contingency: p.quote.contingency, overhead: p.quote.overhead, profit: p.quote.profit, bond: p.quote.bond, showUnitPrices: p.quote.showUnitPrices } };
+  const list = (await IDB.get("kv", "jobTemplates")) || []; list.unshift(tpl); await IDB.put("kv", "jobTemplates", list.slice(0, 40));
+  toast(`Saved "${name}" as a job template. Start your next job from it on the Jobs screen.`);
+}
+async function newFromTemplate() {
+  const list = (await IDB.get("kv", "jobTemplates")) || [];
+  openDialog(`<div class="dlg-h"><h3>Start from a job template</h3></div><div class="dlg-b"><p class="muted" style="margin:0">A template brings over your items, symbol samples (so new drawings count with one click), materials, prices and quote wording.</p>
+   ${list.length ? list.map((t, i) => `<div class="row" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><span style="flex:1;min-width:0"><b>${esc(t.name)}</b><br><span class="muted" style="font-size:12px">${TRADES[t.trade]?.icon || ""} ${esc(TRADES[t.trade]?.name || "")} · ${t.items.length} items · ${new Date(t.at).toLocaleDateString("en-CA")}</span></span><button class="btn sm primary" data-tuse="${i}">Use</button><button class="btn ghost sm" data-tdel="${i}" title="Delete template">${svgI("trash", 15)}</button></div>`).join("") : `<div class="muted">No templates yet. Open a job you like and use <b>Save as template</b> in the Export menu.</div>`}</div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  $$("[data-tdel]").forEach(b => b.onclick = async () => { list.splice(+b.dataset.tdel, 1); await IDB.put("kv", "jobTemplates", list); newFromTemplate(); });
+  $$("[data-tuse]").forEach(b => b.onclick = async () => { const t = list[+b.dataset.tuse]; closeDialog(); const prev = TRADE; TRADE = t.trade || TRADE; const p = newProject(t.name + " (new job)"); TRADE = prev; p.trade = t.trade; p.units = t.units || p.units; p.tick = t.tick;
+    p.items = t.items.map(it => ({ ...JSON.parse(JSON.stringify(it)), maybes: [] })); Object.assign(p.quote, t.quote);
+    await openProject(p, { fresh: true }); toast("Job started from the template. Add drawings with + Add, then press the recount arrow on each item to count them."); });
+}
 function openPriceBook() {
   const rows = Object.values(PB).sort((a, b) => a.name.localeCompare(b.name));
   openDialog(`<div class="dlg-h"><h3>Price book</h3><span class="chip">${rows.length} items</span></div><div class="dlg-b">
@@ -1548,12 +1569,12 @@ function renderTakeoff() {
   const items = p.items; const cnt = items.filter(i => i.kind === "count").reduce((a, i) => a + qtyOf(i, sc), 0);
   const len = items.filter(i => i.kind === "length").reduce((a, i) => a + qtyOf(i, sc), 0);
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
-  let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div><div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
+  let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div>${items.length > 6 ? `<input class="inp" id="itemSearch" placeholder="Search items…" value="${esc(S.itemQ || "")}" autocomplete="off">` : ""}<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
    <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>`;
   if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
   if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.</div>`;
   for (const cat of catsAll(items)) {
-    const its = items.filter(i => i.cat === cat); if (!its.length) continue;
+    const its = items.filter(i => i.cat === cat && (!S.itemQ || (i.name + " " + (i.sys || "") + " " + (i.cc || "")).toLowerCase().includes(S.itemQ.toLowerCase()))); if (!its.length) continue;
     h += `<div class="cat"><div class="cat-h"><b>${cat}</b></div>` + its.map(it => {
       const q = qtyOf(it, sc), hid = S.hidden.has(it.id);
       return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
@@ -1605,14 +1626,30 @@ function renderQuote() {
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
 }
 
+const BREAKS = { cat: ["Category", it => it.cat || "Other"], sys: ["System", it => it.sys || "(no system)"], phase: ["Phase / area", it => it.phase || "(no phase)"], cc: ["Cost code", it => it.cc || "(no cost code)"], sheet: ["Sheet", null], set: ["Drawing set", null] };
+function breakdown(dim) {
+  const p = P(), by = {};
+  const add = (k, c) => { const e = by[k] ||= { mat: 0, hrs: 0, lab: 0 }; e.mat += c.matM; e.hrs += c.hrs; e.lab += c.lab; };
+  if (dim === "sheet" || dim === "set") { for (const g of p.pages) { const one = new Set([g.id]); const k = dim === "sheet" ? g.name : (docOf(g)?.set || "-"); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, one); if (q) add(k, lineCost(it, q)); } } }
+  else { const all = new Set(p.pages.map(g => g.id)); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, all); if (q) add(BREAKS[dim][1](it), lineCost(it, it.kind !== "count" ? Math.ceil(q) : q)); } }
+  return by;
+}
 function bidSummaryHtml(t) {
-  const p = P(), all = new Set(p.pages.map(g => g.id)); const by = {};
-  for (const l of t.lines) { const c = lineCost(l.it, l.qty); const k = l.it.cat || "Other"; const e = by[k] ||= { mat: 0, hrs: 0 }; e.mat += c.matM; e.hrs += c.hrs; }
-  const sheets = p.pages.map(g => { const one = new Set([g.id]); let mat = 0, hrs = 0; for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, one); if (!q) continue; const c = lineCost(it, q); mat += c.matM; hrs += c.hrs; } return { n: g.name, mat, hrs }; }).filter(x => x.mat || x.hrs);
-  if (!Object.keys(by).length) return "";
-  return `<details style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid summary by category and sheet</summary>
-    <table class="t"><tr><th style="text-align:left">Category</th><th class="r">Material</th><th class="r">Hours</th></tr>${Object.entries(by).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r num">${money(v.mat)}</td><td class="r num">${fmt(v.hrs, 1)}</td></tr>`).join("")}</table>
-    ${sheets.length > 1 ? `<table class="t"><tr><th style="text-align:left">Sheet / area</th><th class="r">Material</th><th class="r">Hours</th></tr>${sheets.map(x => `<tr><td>${esc(x.n)}</td><td class="r num">${money(x.mat)}</td><td class="r num">${fmt(x.hrs, 1)}</td></tr>`).join("")}</table>` : ""}</details>`;
+  if (!t.lines.length) return "";
+  const dim = S.breakDim || "cat"; const by = breakdown(dim); const tot = Object.values(by).reduce((a, v) => ({ mat: a.mat + v.mat, hrs: a.hrs + v.hrs }), { mat: 0, hrs: 0 });
+  return `<details ${S.breakOpen ? "open" : ""} id="bsBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid summary and breakdowns</summary>
+    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:12.5px">Break down by</span><select class="inp" id="bsDim" style="width:auto">${Object.entries(BREAKS).map(([k, v]) => `<option value="${k}" ${k === dim ? "selected" : ""}>${v[0]}</option>`).join("")}</select></div>
+    <table class="t"><tr><th style="text-align:left">${BREAKS[dim][0]}</th><th class="r">Material</th><th class="r">Hours</th></tr>${Object.entries(by).sort((a, b) => b[1].mat + b[1].lab - a[1].mat - a[1].lab).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r num">${money(v.mat)}</td><td class="r num">${fmt(v.hrs, 1)}</td></tr>`).join("")}<tr><td><b>Total</b></td><td class="r num"><b>${money(tot.mat)}</b></td><td class="r num"><b>${fmt(tot.hrs, 1)}</b></td></tr></table>
+    <p class="muted" style="margin:0;font-size:12px">Set System, Phase / area and Cost code on each item (pencil in the Takeoff list) to break the bid down those ways.</p></details>
+    ${jobCostHtml()}`;
+}
+function jobCostHtml() {
+  const p = P(); if (!p.baseline) return "";
+  const by = breakdown(S.breakDim === "cc" ? "cc" : "cat"); const act = p.actual ||= {};
+  const rows = Object.entries(by); if (!rows.length) return "";
+  return `<details style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job costing: estimated vs actual hours</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">Once the job is running, enter the hours spent so far. Grouped by ${S.breakDim === "cc" ? "cost code" : "category"}.</p>
+   <table class="t"><tr><th style="text-align:left">Group</th><th class="r">Estimate h</th><th class="r">Actual h</th><th class="r">Left</th></tr>${rows.map(([k, v]) => { const a = +act[k] || 0, left = v.hrs - a; return `<tr><td>${esc(k)}</td><td class="r num">${fmt(v.hrs, 1)}</td><td class="r"><input class="inp num" data-act="${esc(k)}" type="number" min="0" step="0.5" value="${act[k] ?? ""}" style="width:72px;text-align:right"></td><td class="r num" style="color:${left < 0 ? "var(--bad)" : "inherit"}">${fmt(left, 1)}</td></tr>`; }).join("")}</table></details>`;
 }
 function coRows() {
   const p = P(), b = p.baseline; if (!b) return [];
@@ -1635,6 +1672,14 @@ function lockBaseline() {
   p.baseline = { at: Date.now(), total: totals().total, q: {}, names: {}, units: {}, price: {}, lab: {} };
   for (const it of p.items) { p.baseline.q[it.id] = it.kind !== "count" ? Math.ceil(qtyOf(it, all)) : qtyOf(it, all); p.baseline.names[it.id] = it.name; p.baseline.units[it.id] = unitOf(it); p.baseline.price[it.id] = priceOf(it); p.baseline.lab[it.id] = it.labour; }
   changed(); toast("Bid locked. Changes to quantities now show as adds and omits in the Quote tab.");
+}
+async function exportSubmittal() {
+  const p = P(), items = p.items.filter(i => qtyOf(i, new Set(p.pages.map(g => g.id))) > 0);
+  let x = dP(CO.company || "Submittal", { b: true, size: 20, color: "1554D1", after: 0 }) + dP([CO.contact, CO.phone, CO.email].filter(Boolean).join("  ·  "), { size: 9.5, after: 120, border: true });
+  x += dP("PRODUCT DATA SUBMITTAL", { b: true, size: 16, before: 120, after: 60 }) + dP("Project: " + p.name + (p.quote.site ? " — " + p.quote.site : ""), { after: 0 }) + dP("Client: " + (p.quote.client || "") + "    Date: " + new Date().toLocaleDateString("en-CA"), { after: 160 });
+  x += dTable([["#", "Item", "Manufacturer", "Model / catalogue", "Spec sheet"], ...items.map((it, i) => [String(i + 1), it.name, it.mfr || "", it.model || "", it.spec || "(attach)"])], [500, 3200, 1900, 2200, 2280], { head: true });
+  x += dP("Reviewer stamp:  ☐ Approved   ☐ Approved as noted   ☐ Revise and resubmit", { before: 240 }) + dP("Reviewed by: ____________________   Date: ____________");
+  saveFile(slug(p.name) + "-submittal.docx", await buildDocx(x));
 }
 async function exportChangeOrder() {
   const p = P(), rows = coRows(), H = (a) => a.map(v => ({ v, s: "head" })), tot = rows.reduce((a, r) => a + r.val, 0);
@@ -1760,6 +1805,11 @@ function editItem(id) {
     <p class="muted" style="margin:6px 0;font-size:12.5px">List what one ${esc(it.name)} needs (box, device, plate, wire…). The quote prices it from these parts and Excel gets a full Material List.</p>
     <div id="asmRows" style="display:grid;gap:6px"></div>
     <div class="row" style="margin-top:6px"><button class="btn sm" id="asmAdd" type="button">+ Add part</button>${asmStarter(it) ? `<button class="btn sm" id="asmStart" type="button">Start from a typical assembly</button>` : ""}<span class="spacer"></span><span class="muted num" id="asmTot"></span></div></details>
+   <details ${it.sys || it.phase || it.cc || it.mfr ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Breakdowns, cost code and submittal info</summary>
+    <div class="grid2" style="margin-top:6px"><label class="field"><span>System</span><input class="inp" id="eSys" list="dlSys" value="${esc(it.sys || "")}" placeholder="e.g. Lighting, Domestic water"></label><label class="field"><span>Phase / area</span><input class="inp" id="ePhase" list="dlPhase" value="${esc(it.phase || "")}" placeholder="e.g. Level 2, Rough-in"></label></div>
+    <div class="grid2"><label class="field"><span>Cost code</span><input class="inp" id="eCC" value="${esc(it.cc || "")}" placeholder="e.g. 26-0500"></label><label class="field"><span>Manufacturer</span><input class="inp" id="eMfr" value="${esc(it.mfr || "")}"></label></div>
+    <div class="grid2"><label class="field"><span>Model / catalogue no.</span><input class="inp" id="eModel" value="${esc(it.model || "")}"></label><label class="field"><span>Spec sheet link</span><input class="inp" id="eSpec" value="${esc(it.spec || "")}" placeholder="https://…"></label></div>
+    <datalist id="dlSys">${[...new Set(P().items.map(i => i.sys).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist><datalist id="dlPhase">${[...new Set(P().items.map(i => i.phase).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist></details>
    <label class="row" style="gap:6px"><input type="checkbox" id="eAlt" ${it.alt ? "checked" : ""}> Price as an alternate (shown separately, not in the base bid)</label>
    <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
@@ -1772,7 +1822,7 @@ function editItem(id) {
   $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
   if ($("#asmStart")) $("#asmStart").onclick = () => { asm = asmStarter(it).map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
   asmPaint();
-  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
   $("#eSave").onclick = save;
   if ($("#eSaveCount")) $("#eSaveCount").onclick = async () => { save(); const r = await countItem(it, P().pages); changed({ sheets: true }); reportCount(it, r); };
   $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); P().markups = P().markups.filter(m => m.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
@@ -1782,6 +1832,7 @@ function addManualItem(kindWanted) {
   const kl = { count: "count", length: "run", area: "area" };
   openDialog(`<div class="dlg-h"><h3>Add item</h3><span class="chip">${tr().icon} ${esc(tr().name)}</span></div><div class="dlg-b">
    <div class="eyebrow">Common ${esc(tr().name.toLowerCase())} items (with materials ready to price)</div>
+   <input class="inp" id="preQ" placeholder="Search all trades' items…" autocomplete="off">
    <div class="preset-grid">${pres.map((x, i) => `<button class="btn sm" data-pre="${tr().presets.indexOf(x)}" type="button">${esc(x[0])} <span class="muted" style="font-size:11px">${kl[x[1]]}</span></button>`).join("")}</div>
    <div class="eyebrow" style="margin-top:6px">Or your own</div>
    <label class="field"><span>Name</span><input class="inp" id="mName" placeholder='e.g. ${esc(tr().examples[0])}'></label>
@@ -1790,6 +1841,11 @@ function addManualItem(kindWanted) {
   if (kindWanted) $("#mKind").value = kindWanted;
   const start = (it) => { P().items.push(it); S.activeItem = it.id; if (it.kind === "length") { S.measureItem = it.id; setTool("measure"); } else if (it.kind === "area") { S.areaItem = it.id; setTool("area"); } else setTool("count"); closeDialog(); changed();
     toast(it.kind === "count" ? `Now drag a box around one ${it.name} on the drawing to count them all.` : it.kind === "length" ? `Click along the ${it.name} route on the drawing.` : `Click around the ${it.name} area on the drawing, double-click to finish.`); };
+  const allPre = TRADE_IDS.flatMap(id => TRADES[id].presets.map(x => [id, x]));
+  $("#preQ").oninput = (e) => { const q = e.target.value.trim().toLowerCase(); const g = $(".preset-grid");
+    const list = q ? allPre.filter(([id, x]) => x[0].toLowerCase().includes(q)).slice(0, 40) : tr().presets.filter(x => !kindWanted || x[1] === kindWanted).map(x => [TRADE_IDS.find(id => TRADES[id].presets.includes(x)), x]);
+    g.innerHTML = list.map(([id, x]) => `<button class="btn sm" data-pre2="${id}:${TRADES[id].presets.indexOf(x)}" type="button">${esc(x[0])} <span class="muted" style="font-size:11px">${kl[x[1]]}${id !== (P().trade) ? " · " + TRADES[id].name : ""}</span></button>`).join("") || '<span class="muted">No match. Use "Or your own" below.</span>'; };
+  $(".preset-grid").addEventListener("click", (e) => { const b = e.target.closest("[data-pre2]"); if (!b) return; const [id, i] = b.dataset.pre2.split(":"); const x = TRADES[id].presets[+i]; commit(); const it = newItem({ name: x[0], kind: x[1], cat: CATS.includes(x[2]) ? x[2] : (x[2]) }); if (!it.asm?.length && x[3]?.length) it.asm = x[3].map(([n, q, u]) => ({ n, q, u, c: "" })); start(it); });
   $$("[data-pre]").forEach(b => b.onclick = () => { const x = tr().presets[+b.dataset.pre]; commit(); const it = newItem({ name: x[0], kind: x[1], cat: x[2] }); if (!it.asm?.length && x[3]?.length) it.asm = x[3].map(([n, q, u]) => ({ n, q, u, c: "" })); start(it); });
   $("#mOk").onclick = () => { const n = $("#mName").value.trim(); if (!n) return; commit(); const it = newItem({ name: n, cat: $("#mCat").value, kind: $("#mKind").value }); start(it); };
 }
@@ -2058,8 +2114,9 @@ async function saveFile(name, blob) {
   try { await Cloud.dl.save({ filename: name, data: blob }); toast("Saved " + name); }
   catch (e) { if (e?.code === "declined") return; toast("Couldn't save the file" + (e?.message ? ": " + e.message : ".")); }
 }
+function exportPages() { return S.exportScope === "scope" ? pagesInScope() : new Set(P().pages.map(g => g.id)); }
 function takeoffRows() {
-  const all = new Set(P().pages.map(g => g.id));
+  const all = exportPages();
   return catsAll(P().items).flatMap(cat => P().items.filter(i => i.cat === cat).map(it => { const q = qtyOf(it, all); const qq = it.kind !== "count" ? Math.ceil(q) : q; const pr = priceOf(it); return { cat, it, q: qq, unit: unitOf(it), price: pr, ext: pr != null ? qq * pr : null, lab: it.labour, hrs: it.labour != null ? qq * it.labour : null }; })).filter(r => r.q > 0);
 }
 /* --- XLSX --- */
@@ -2079,8 +2136,8 @@ async function buildXlsx(sheets) {
 }
 async function exportXlsx() {
   const p = P(), rows = takeoffRows(), t = totals(), H = (a) => a.map(v => ({ v, s: "head" }));
-  const s1 = [[{ v: CO.company + " — Material Takeoff", s: "title" }], [p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Prepared " + new Date().toLocaleDateString("en-CA")], [], H(["Category", "Item", "Qty", "Unit", "Unit price", "Extended", "Labour h/unit", "Labour hours"])];
-  for (const r of rows) s1.push([r.cat, r.it.name, r.q, r.unit, r.price != null ? { v: r.price, s: "money" } : "", r.ext != null ? { v: r.ext, s: "money" } : "", r.lab ?? "", r.hrs != null ? { v: Math.round(r.hrs * 100) / 100, s: "dec" } : ""]);
+  const s1 = [[{ v: CO.company + " — Material Takeoff", s: "title" }], [p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Prepared " + new Date().toLocaleDateString("en-CA")], [], H(["Category", "Item", "Qty", "Unit", "Unit price", "Extended", "Labour h/unit", "Labour hours", "System", "Phase / area", "Cost code", "Manufacturer", "Model"])];
+  for (const r of rows) s1.push([r.cat, r.it.name, r.q, r.unit, r.price != null ? { v: r.price, s: "money" } : "", r.ext != null ? { v: r.ext, s: "money" } : "", r.lab ?? "", r.hrs != null ? { v: Math.round(r.hrs * 100) / 100, s: "dec" } : "", r.it.sys || "", r.it.phase || "", r.it.cc || "", r.it.mfr || "", r.it.model || ""]);
   s1.push([], [{ v: "Material total", s: "b" }, "", "", "", "", { v: t.mat, s: "bmoney" }, "", { v: Math.round(t.hrs * 100) / 100, s: "dec" }]);
   const s2 = [H(["Sheet", "Drawing set", "Item", "Qty", "Unit"])];
   for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) s2.push([g.name, docOf(g).set, it.name, it.kind !== "count" ? Math.ceil(q) : q, unitOf(it)]); }
@@ -2088,12 +2145,15 @@ async function exportXlsx() {
   for (const r of p.runs) { const g = p.pages.find(x => x.id === r.page), it = itemOf(r.item), u = p.units === "m" ? 1 : M_PER_FT; const tl = realLen(r.pts, g), tt = runLen(r, g); s3.push([g?.name, (it?.name || "") + (r.circuit ? " (" + r.circuit + ")" : ""), tl != null ? +(tl / u).toFixed(1) : "no scale", bends(r.pts), r.drops || 0, tt != null ? +(tt / u).toFixed(1) : "", p.units]); }
   const mats = {}; for (const r of rows) for (const m of r.it.asm || []) { const k = (m.n || "") + "|" + (m.u || ""); const e = mats[k] ||= { n: m.n, u: m.u, q: 0, c: m.c }; e.q += (+m.q || 0) * r.q; }
   const s4 = [H(["Material", "Qty", "Unit", "Unit cost", "Extended"])]; for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) { const q = Math.ceil(e.q * 100) / 100; s4.push([e.n, q, e.u || "", e.c !== "" && e.c != null ? { v: +e.c, s: "money" } : "", e.c !== "" && e.c != null ? { v: q * e.c, s: "money" } : ""]); }
-  const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
+  const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13, 16, 16, 12, 16, 16], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
   if (s4.length > 1) sheets.splice(1, 0, { name: "Material List", cols: [36, 10, 7, 12, 13], rows: s4 });
   const bs = [H(["Bid summary", "Amount"])]; const add = (k, v) => bs.push([k, { v: Math.round(v * 100) / 100, s: "money" }]);
   add("Materials (with markup)", t.matM); add("Labour (" + fmt(t.hrs, 1) + " h)", t.lab); if (t.other) add(p.quote.otherLbl || "Other", t.other); if (t.cont) add("Contingency", t.cont); if (t.oh) add("Overhead", t.oh); if (t.pf) add("Profit", t.pf); if (t.bond) add("Bond", t.bond); add("Subtotal", t.sub); add((CO.taxName || "Tax") + " " + CO.hst + "%", t.tax); bs.push([{ v: "TOTAL", s: "b" }, { v: Math.round(t.total * 100) / 100, s: "bmoney" }]);
   for (const a of t.alts) add("Alternate: " + a.it.name, a.sell);
   sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
+  const bk = [H(["Breakdown", "Group", "Material", "Labour hours", "Labour $"])];
+  for (const d of ["cat", "sys", "phase", "cc", "sheet"]) { const by = breakdown(d); const vals = Object.entries(by); if (d !== "cat" && d !== "sheet" && vals.length === 1 && /^\(no /.test(vals[0][0])) continue; for (const [k, v] of vals) bk.push([BREAKS[d][0], k, { v: Math.round(v.mat * 100) / 100, s: "money" }, { v: Math.round(v.hrs * 100) / 100, s: "dec" }, { v: Math.round(v.lab * 100) / 100, s: "money" }]); }
+  sheets.push({ name: "Breakdowns", cols: [16, 34, 14, 14, 14], rows: bk });
   const blob = await buildXlsx(sheets);
   saveFile(slug(p.name) + "-takeoff.xlsx", blob);
 }
@@ -2236,12 +2296,13 @@ async function exportMarkedPdf() {
 function exportMenu(btn) {
   closeMenu(); const r = btn.getBoundingClientRect(); const m = document.createElement("div"); m.className = "menu"; m.id = "menu";
   m.style.top = r.bottom + 6 + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
-  m.innerHTML = `<div class="grp">Quote</div><button data-x="qdocx">Quote <small>Word .docx</small></button><button data-x="qpdf">Quote <small>PDF</small></button>
+  m.innerHTML = `${S.scope !== "all" ? `<label class="row" style="gap:6px;padding:6px 12px;font-size:12.5px"><input type="checkbox" id="xScope" ${S.exportScope === "scope" ? "checked" : ""}> Only the sheets in the Takeoff filter</label>` : ""}<div class="grp">Quote</div><button data-x="qdocx">Quote <small>Word .docx</small></button><button data-x="qpdf">Quote <small>PDF</small></button>
    <div class="grp">Itemized takeoff</div><button data-x="txlsx">Takeoff <small>Excel .xlsx</small></button><button data-x="tdocx">Takeoff <small>Word .docx</small></button><button data-x="tpdf">Takeoff <small>PDF</small></button>
-   <div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}
-   <div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>`;
+   <div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button><button data-x="sub">Submittal package <small>Word</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}
+   <div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>
+   <div class="grp">Reuse</div><button data-x="tpl">Save as job template <small>for next time</small></button>`;
   document.body.appendChild(m);
-  m.onclick = async (e) => { const b = e.target.closest("[data-x]"); if (!b) return; closeMenu(); await runExport(b.dataset.x); };
+  m.onclick = async (e) => { if (e.target.id === "xScope") { S.exportScope = e.target.checked ? "scope" : "all"; e.stopPropagation(); return; } const b = e.target.closest("[data-x]"); if (!b) return; closeMenu(); await runExport(b.dataset.x); };
   setTimeout(() => document.addEventListener("click", closeMenu, { once: true }), 0);
 }
 function closeMenu() { $("#menu")?.remove(); }
@@ -2250,7 +2311,7 @@ async function runExport(x) {
     if (!P().items.length && x !== "mpdf") return toast("Count something first — the export is built from your takeoff.");
     if (x === "coxlsx" && !P().baseline) return toast("Lock the bid first in the Quote tab.");
     if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
-    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder }[x];
+    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate }[x];
     await f();
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
 }
@@ -2268,7 +2329,7 @@ function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("o
 let spaceDown = false;
 function bind() {
   window.addEventListener("resize", sizeCanvas);
-  $("#btnPB").onclick = openPriceBook; $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
+  $("#btnPB").onclick = openPriceBook; $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
   $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -2290,8 +2351,10 @@ function bind() {
     if (e.target.id === "unitsSel") { P().units = e.target.value; P().items.forEach(i => { if (i.kind === "length") i.unit = P().units; }); changed(); }
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
     if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
+    if (e.target.id === "tickSel") { P().tick = +e.target.value; markDirty(); draw(); }
     if (e.target.id === "areaSel") { if (e.target.value === "__newA") { addManualItem("area"); } else S.areaItem = e.target.value || null; }
   };
+  $("#subbar").oninput = (e) => { if (e.target.id === "tickSel") { P().tick = +e.target.value; draw(); } };
   $("#subbar").onclick = (e) => {
     const c = e.target.closest("[data-mcol]"); if (c) { S.markStyle.color = c.dataset.mcol; renderSubbar(); }
     if (e.target.id === "scaleAll" && page()?.scale) { commit(); P().pages.forEach(g => g.scale = { ...page().scale }); changed({ sheets: true }); toast("Scale applied to every sheet."); }
@@ -2316,6 +2379,7 @@ function bind() {
     if (e.target.id === "addManual" || e.target.id === "addPreset") return addManualItem();
     const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure" && S.tool !== "circuit") setTool("measure"); else renderSubbar(); } else if (it.kind === "area") { S.areaItem = id; if (S.tool !== "area") setTool("area"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
   };
+  $("#pane-takeoff").addEventListener("input", (e) => { if (e.target.id === "itemSearch") { S.itemQ = e.target.value; const pos = e.target.selectionStart; renderTakeoff(); const n = $("#itemSearch"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } } });
   $("#pane-takeoff").ondblclick = (e) => { const r = e.target.closest("[data-item]"); if (r) editItem(r.dataset.item); };
   $("#pane-takeoff").onchange = (e) => { if (e.target.id === "scopeSel") { S.scope = e.target.value; renderTakeoff(); }
     if (e.target.id === "jobTrade") { const t = e.target.value; commit(); const old = TRADES[P().trade]; P().trade = t; CATS = TRADES[t].cats.slice(); if (P().quote.scope === old.scope) P().quote.scope = TRADES[t].scope; if (P().quote.excl === old.excl) P().quote.excl = TRADES[t].excl; changed(); toast("This job is now " + TRADES[t].name + "."); } };
@@ -2324,7 +2388,8 @@ function bind() {
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
-  $("#pane-quote").addEventListener("change", (e) => { const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
+  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
   $("#pane-quote").onclick = (e) => { if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };

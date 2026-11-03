@@ -89,6 +89,7 @@
   gate("addFiles", "Adding your own drawings needs a subscription.");
   gate("startBlankJob", "Starting your own jobs needs a subscription.");
   gate("openProjectById", "Opening your jobs needs a subscription.");
+  gate("newFromTemplate", "Starting your own jobs needs a subscription.");
 
   function renderChip() { var el = document.getElementById("planChip"); if (!el) return; el.hidden = false; el.textContent = unlocked() ? "Subscribed" : "Not subscribed"; }
 
