@@ -1,4 +1,4 @@
-/* 20 Vision Electrical Take Off — desktop (installable web app) layer, loaded last.
+/* 20 Vision Material Take Off — desktop (installable web app) layer, loaded last.
    Adds: subscription gate (Lemon Squeezy licence keys + access codes), "Install app" button, offline support. */
 (function () {
   "use strict";

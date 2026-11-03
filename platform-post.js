@@ -1,4 +1,4 @@
-/* 20 Vision Electrical Take Off — platform layer loaded AFTER the app.
+/* 20 Vision Material Take Off — platform layer loaded AFTER the app.
    Adds: AI key settings, Google Play subscription gate, pinch-to-zoom. */
 (function () {
   "use strict";

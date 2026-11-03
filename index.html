@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1554D1">
-<title>20 Vision Electrical Take Off</title>
-<meta name="description" content="Electrical takeoff, markup and quoting for electrical contractors.">
+<title>20 Vision Material Take Off</title>
+<meta name="description" content="Material takeoff, markup and quoting for every trade.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
 <body>
-<title>20 Vision Electrical Take Off</title>
+<title>20 Vision Material Take Off</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
@@ -156,6 +156,14 @@ h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;margi
 .wel-dots i.on{background:var(--blue);width:22px;border-radius:4px}
 .wel-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .wel-actions .btn{justify-content:center}
+.linkbtn{background:none;border:0;padding:0;color:var(--blue);font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.trade-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.trade-card{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;text-align:left;cursor:pointer;font:inherit;color:inherit}
+.trade-card:hover{border-color:var(--blue)}
+.trade-card.on{border-color:var(--blue);background:var(--blue-soft);box-shadow:0 0 0 1px var(--blue) inset}
+.trade-card .ic{font-size:22px;line-height:1}
+.trade-card b{font-size:14.5px}
+.preset-grid{display:flex;flex-wrap:wrap;gap:6px;max-height:40vh;overflow:auto}
 .start-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
 .start-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px;text-align:left;cursor:pointer;font:inherit;color:inherit}
 .start-card:hover{border-color:var(--blue)}
@@ -259,7 +267,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
     <div class="row" style="justify-content:space-between">
       <div class="brand">
         <div class="brand-mark">20V</div>
-        <div><h1>20 Vision Electrical Take Off</h1><small>Electrical takeoff, markup and quoting — 20 Vision Electric Inc.</small></div>
+        <div><h1>20 Vision Material Take Off</h1><small>Takeoff, markup and quoting for every trade · <button class="linkbtn" id="btnTrade" type="button"></button></small></div>
       </div>
       <div class="row">
         <button class="btn" id="btnSettings">Company details</button>
@@ -365,7 +373,7 @@ window.dispatchEvent(new Event("pdfjs-ready"));
 <script>
 "use strict";
 /* =====================================================================
-   20 Vision Electrical Take Off — single-page electrical takeoff, markup & quoting
+   20 Vision Material Take Off — single-page multi-trade takeoff, markup & quoting
    ===================================================================== */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -378,7 +386,195 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const use = (name) => (window.claude && typeof window.claude.use === "function") ? window.claude.use(name).catch(() => null) : Promise.resolve(null);
 const pdfReady = new Promise(res => { if (window.pdfjsLib || window.pdfjsFailed) res(); else window.addEventListener("pdfjs-ready", () => res(), { once: true }); });
 
-const CATS = ["Receptacles", "Switches", "Lighting", "Fire alarm", "Data & comms", "Power & equipment", "Conduit & wire", "Other"];
+/* Trade packs for 20 Vision Material Take Off.
+   Each preset: [name, kind ("count" | "length" | "area"), category, assembly parts per unit: [part, qty, unit]]
+   Assembly quantities are starting points the contractor edits in the price book. */
+const TRADES = {
+  electrical: {
+    name: "Electrical", icon: "⚡", who: "electrical contractor", estimator: "Ontario electrical estimator",
+    code: "the Canadian Electrical Code / Ontario Electrical Safety Code",
+    cats: ["Receptacles", "Switches", "Lighting", "Fire alarm", "Data & comms", "Power & equipment", "Conduit & wire", "Other"],
+    examples: ["Duplex receptacle", "GFCI receptacle", "Single pole switch", "LED pot light", "2x4 LED troffer", "Smoke detector", "Data outlet", "Exit sign", "Panel"],
+    presets: [
+      ["Duplex receptacle", "count", "Receptacles", [["Device box", 1, "ea"], ["Duplex receptacle", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/2 NMD90", 15, "ft"]]],
+      ["GFCI receptacle", "count", "Receptacles", [["Device box", 1, "ea"], ["GFCI receptacle", 1, "ea"], ["Decora plate", 1, "ea"], ["#14/2 NMD90", 15, "ft"]]],
+      ["Single pole switch", "count", "Switches", [["Device box", 1, "ea"], ["Switch", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/2 NMD90", 15, "ft"]]],
+      ["3-way switch", "count", "Switches", [["Device box", 1, "ea"], ["3-way switch", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/3 NMD90", 20, "ft"]]],
+      ["LED pot light", "count", "Lighting", [["LED slim pot light", 1, "ea"], ["#14/2 NMD90", 10, "ft"]]],
+      ["2x4 LED troffer", "count", "Lighting", [["2x4 LED troffer", 1, "ea"], ["Fixture whip", 1, "ea"], ["Seismic wire / clips", 1, "set"]]],
+      ["Exit / emergency light", "count", "Lighting", [["Exit sign combo", 1, "ea"], ["Box & connector", 1, "ea"]]],
+      ["Smoke detector", "count", "Fire alarm", [["Smoke detector", 1, "ea"], ["Octagon box", 1, "ea"], ["#14/3 NMD90", 15, "ft"]]],
+      ["Data outlet", "count", "Data & comms", [["Low-voltage bracket", 1, "ea"], ["Cat6 jack & plate", 1, "ea"], ["Cat6 cable", 60, "ft"]]],
+      ["Panel", "count", "Power & equipment", []],
+      ['3/4" EMT conduit run', "length", "Conduit & wire", [['3/4" EMT', 1, "ft"], ["#12 RW90 (3 cond.)", 3.15, "ft"], ["Couplings & connectors", 0.12, "ea"], ["Straps", 0.12, "ea"]]],
+      ["#12 wire (branch circuit)", "length", "Conduit & wire", [["#12 RW90", 1.05, "ft"]]],
+      ["Cable tray", "length", "Conduit & wire", [["Cable tray", 1, "ft"], ["Tray hangers", 0.2, "ea"]]],
+    ],
+    scope: "Supply and install the electrical work shown on the drawings listed under Basis of Quotation, including the devices, lighting and branch circuit runs itemized in this quotation.",
+    excl: "Permit and ESA inspection fees unless listed\nPatching, painting and making good\nCore drilling, X-ray scanning and firestopping by others\nFire alarm verification\nOvertime and after-hours work\nUtility company charges\nOwner-supplied fixtures and equipment",
+    asks: ["Check my takeoff for anything an electrician usually misses on a job like this.", "List the rough-in material (boxes, rings, plates, connectors) I need for the devices counted.", "How many working days should two electricians plan for this takeoff? Show your reasoning."],
+  },
+  plumbing: {
+    name: "Plumbing", icon: "🚰", who: "plumbing contractor", estimator: "Ontario plumbing estimator",
+    code: "the Ontario Building Code Part 7 (plumbing) and the National Plumbing Code",
+    cats: ["Fixtures", "Valves & devices", "Water supply pipe", "Drain, waste & vent", "Equipment", "Fittings & supports", "Other"],
+    examples: ["Water closet", "Lavatory", "Floor drain", "Cleanout", "Ball valve", "Backflow preventer", "Hose bibb", "Water heater", "Flow switch", "Pressure switch"],
+    presets: [
+      ["Water closet", "count", "Fixtures", [["Water closet c/w seat", 1, "ea"], ["Wax seal & bolts", 1, "set"], ["Supply stop & riser", 1, "ea"]]],
+      ["Lavatory", "count", "Fixtures", [["Lavatory & faucet", 1, "ea"], ["P-trap", 1, "ea"], ["Supply stops & risers", 2, "ea"]]],
+      ["Kitchen sink", "count", "Fixtures", [["Sink & faucet", 1, "ea"], ["P-trap", 1, "ea"], ["Supply stops & risers", 2, "ea"]]],
+      ["Urinal", "count", "Fixtures", [["Urinal & flush valve", 1, "ea"], ["Carrier", 1, "ea"]]],
+      ["Floor drain", "count", "Drain, waste & vent", [["Floor drain", 1, "ea"], ["Trap primer connection", 1, "ea"]]],
+      ["Cleanout", "count", "Drain, waste & vent", [["Cleanout & cover", 1, "ea"]]],
+      ["Hose bibb", "count", "Valves & devices", [["Frost-free hose bibb", 1, "ea"]]],
+      ["Ball valve", "count", "Valves & devices", [["Ball valve", 1, "ea"]]],
+      ["Check valve", "count", "Valves & devices", [["Check valve", 1, "ea"]]],
+      ["Backflow preventer", "count", "Valves & devices", [["Backflow preventer", 1, "ea"], ["Test certificate", 1, "ea"]]],
+      ["Pressure reducing valve", "count", "Valves & devices", [["PRV", 1, "ea"]]],
+      ["Flow switch", "count", "Valves & devices", [["Flow switch", 1, "ea"]]],
+      ["Pressure switch", "count", "Valves & devices", [["Pressure switch", 1, "ea"]]],
+      ["Water heater", "count", "Equipment", [["Water heater", 1, "ea"], ["Expansion tank", 1, "ea"], ["T&P discharge", 1, "set"]]],
+      ['3/4" copper type L', "length", "Water supply pipe", [['3/4" copper type L', 1, "ft"], ["Fittings allowance", 0.15, "ea"], ["Hangers", 0.15, "ea"], ["Insulation", 1, "ft"]]],
+      ['1/2" PEX', "length", "Water supply pipe", [['1/2" PEX', 1.05, "ft"], ["Fittings allowance", 0.1, "ea"]]],
+      ['3" PVC DWV', "length", "Drain, waste & vent", [['3" PVC DWV', 1, "ft"], ["Fittings allowance", 0.2, "ea"], ["Hangers", 0.15, "ea"]]],
+      ['4" cast iron (no-hub)', "length", "Drain, waste & vent", [['4" no-hub cast iron', 1, "ft"], ["No-hub couplings", 0.2, "ea"], ["Hangers", 0.15, "ea"]]],
+    ],
+    scope: "Supply and install the plumbing work shown on the drawings listed under Basis of Quotation, including the fixtures, valves, piping and equipment itemized in this quotation.",
+    excl: "Permit and inspection fees unless listed\nExcavation, backfill and concrete cutting by others\nPatching, painting and making good\nFixtures supplied by owner\nGas piping unless listed\nOvertime and after-hours work\nMunicipal connection fees",
+    asks: ["Check my plumbing takeoff for anything a plumber usually misses (cleanouts, trap primers, venting, supports).", "List the fittings and supports I should allow for the piping measured.", "How many working days should two plumbers plan for this takeoff? Show your reasoning."],
+  },
+  fire: {
+    name: "Fire protection", icon: "🧯", who: "fire protection / sprinkler contractor", estimator: "fire sprinkler estimator in Ontario",
+    code: "NFPA 13 and the Ontario Building Code / Ontario Fire Code",
+    cats: ["Sprinkler heads", "Valves & devices", "Mains & branch lines", "Standpipes & hose", "Alarm & monitoring", "Fittings & supports", "Other"],
+    examples: ["Pendent sprinkler", "Upright sprinkler", "Sidewall sprinkler", "Concealed sprinkler", "Zone control valve", "Flow switch", "Tamper switch", "Pressure switch", "Fire department connection", "Hose cabinet"],
+    presets: [
+      ["Pendent sprinkler head", "count", "Sprinkler heads", [["Pendent sprinkler", 1, "ea"], ["Escutcheon", 1, "ea"], ["Drop / sprig fittings", 1, "set"]]],
+      ["Upright sprinkler head", "count", "Sprinkler heads", [["Upright sprinkler", 1, "ea"], ["Sprig fittings", 1, "set"]]],
+      ["Sidewall sprinkler head", "count", "Sprinkler heads", [["Sidewall sprinkler", 1, "ea"], ["Escutcheon", 1, "ea"]]],
+      ["Concealed sprinkler head", "count", "Sprinkler heads", [["Concealed sprinkler & cover", 1, "ea"], ["Flexible drop", 1, "ea"]]],
+      ["Zone control valve assembly", "count", "Valves & devices", [["Butterfly valve w/ tamper", 1, "ea"], ["Flow switch", 1, "ea"], ["Test & drain", 1, "ea"], ["Pressure gauge", 1, "ea"]]],
+      ["Flow switch", "count", "Alarm & monitoring", [["Vane-type flow switch", 1, "ea"]]],
+      ["Tamper switch", "count", "Alarm & monitoring", [["Tamper (supervisory) switch", 1, "ea"]]],
+      ["Pressure switch", "count", "Alarm & monitoring", [["Alarm pressure switch", 1, "ea"]]],
+      ["Check valve", "count", "Valves & devices", [["Alarm / check valve", 1, "ea"]]],
+      ["Fire department connection", "count", "Standpipes & hose", [["Siamese FDC", 1, "ea"], ["Check valve", 1, "ea"], ["Ball drip", 1, "ea"]]],
+      ["Hose cabinet", "count", "Standpipes & hose", [["Hose cabinet & valve", 1, "ea"]]],
+      ["Inspector's test", "count", "Valves & devices", [["Inspector's test assembly", 1, "ea"]]],
+      ['1" branch line (Sch 10/40)', "length", "Mains & branch lines", [['1" black steel', 1, "ft"], ["Fittings allowance", 0.2, "ea"], ["Hangers", 0.1, "ea"]]],
+      ['2-1/2" cross main', "length", "Mains & branch lines", [['2-1/2" Sch 10', 1, "ft"], ["Grooved couplings", 0.05, "ea"], ["Hangers", 0.1, "ea"], ["Seismic bracing", 0.025, "ea"]]],
+      ['4" feed main', "length", "Mains & branch lines", [['4" Sch 10', 1, "ft"], ["Grooved couplings", 0.05, "ea"], ["Hangers", 0.1, "ea"], ["Seismic bracing", 0.025, "ea"]]],
+    ],
+    scope: "Supply and install the fire protection work shown on the drawings listed under Basis of Quotation, including the sprinkler heads, valves, devices and piping itemized in this quotation, with hydraulic calculations by others unless listed.",
+    excl: "Hydraulic calculations and engineering unless listed\nFire alarm wiring and monitoring by others\nFlow test and water service by others\nPatching, painting and firestopping by others\nOvertime and after-hours work\nPermit and inspection fees unless listed",
+    asks: ["Check my sprinkler takeoff for anything usually missed (inspector's test, drains, seismic bracing, FDC).", "Roughly how many heads per branch line and what spacing does this layout suggest?", "How many working days should a crew of two fitters plan for this takeoff? Show your reasoning."],
+  },
+  hvac: {
+    name: "HVAC / Mechanical", icon: "🌀", who: "HVAC / mechanical contractor", estimator: "Ontario HVAC estimator",
+    code: "the Ontario Building Code Part 6, CSA B149.1 (gas) and SMACNA duct standards",
+    cats: ["Air outlets", "Equipment", "Ductwork", "Piping", "Controls", "Accessories", "Other"],
+    examples: ["Supply diffuser", "Return grille", "Linear diffuser", "Exhaust fan", "VAV box", "Fire damper", "Volume damper", "Thermostat", "RTU", "Unit heater"],
+    presets: [
+      ["Supply diffuser", "count", "Air outlets", [["Supply diffuser 24x24", 1, "ea"], ["Flex duct", 6, "ft"], ["Takeoff collar & damper", 1, "ea"]]],
+      ["Return grille", "count", "Air outlets", [["Return grille", 1, "ea"]]],
+      ["Linear diffuser", "count", "Air outlets", [["Linear slot diffuser", 1, "ea"], ["Plenum", 1, "ea"]]],
+      ["Exhaust fan", "count", "Equipment", [["Exhaust fan", 1, "ea"], ["Backdraft damper", 1, "ea"]]],
+      ["VAV box", "count", "Equipment", [["VAV terminal unit", 1, "ea"], ["Controls", 1, "set"]]],
+      ["Rooftop unit (RTU)", "count", "Equipment", [["RTU", 1, "ea"], ["Curb", 1, "ea"], ["Crane lift", 1, "allow"]]],
+      ["Unit heater", "count", "Equipment", [["Unit heater", 1, "ea"], ["Hangers", 1, "set"]]],
+      ["Fire damper", "count", "Accessories", [["Fire damper", 1, "ea"], ["Access door", 1, "ea"]]],
+      ["Volume damper", "count", "Accessories", [["Volume damper", 1, "ea"]]],
+      ["Thermostat", "count", "Controls", [["Thermostat", 1, "ea"], ["Control wire", 50, "ft"]]],
+      ['12x10 rectangular duct', "length", "Ductwork", [["Galvanized duct (lb)", 6.2, "lb"], ["Hangers", 0.125, "ea"], ["Sealant", 0.05, "tube"]]],
+      ['8" round duct', "length", "Ductwork", [['8" round pipe', 1, "ft"], ["Elbows & fittings allowance", 0.1, "ea"], ["Hangers", 0.125, "ea"]]],
+      ["Duct insulation", "area", "Ductwork", [["Duct wrap", 1.1, "sq ft"]]],
+      ['1-1/4" refrigerant line set', "length", "Piping", [["Line set", 1, "ft"], ["Insulation", 1, "ft"]]],
+      ['1" black steel gas pipe', "length", "Piping", [['1" black steel', 1, "ft"], ["Fittings allowance", 0.2, "ea"], ["Hangers", 0.15, "ea"]]],
+    ],
+    scope: "Supply and install the HVAC work shown on the drawings listed under Basis of Quotation, including the equipment, ductwork, air outlets and piping itemized in this quotation.",
+    excl: "Electrical power wiring by others\nTesting, adjusting and balancing unless listed\nStructural supports and roof openings by others\nCrane and hoisting unless listed\nPatching, painting and making good\nPermit and TSSA fees unless listed\nOvertime and after-hours work",
+    asks: ["Check my HVAC takeoff for anything usually missed (dampers, access doors, flex, supports, balancing).", "Estimate the sheet-metal weight for the ductwork measured.", "How many working days should two installers plan for this takeoff? Show your reasoning."],
+  },
+  drywall: {
+    name: "Drywall & framing", icon: "🧱", who: "drywall and framing contractor", estimator: "drywall and steel stud estimator",
+    code: "the Ontario Building Code Part 9 and the rated assembly listings (ULC / UL)",
+    cats: ["Walls", "Ceilings", "Bulkheads & soffits", "Openings & specialties", "Finishing", "Other"],
+    examples: ["Partition type A", "Rated wall", "Door opening", "Access panel", "Bulkhead", "Corner bead"],
+    presets: [
+      ["Partition 9' (board both sides)", "length", "Walls", [["Drywall 4x8 sheet", 0.6, "ea"], ['3-5/8" steel stud @16"', 0.85, "ea"], ['3-5/8" track', 2.1, "ft"], ["Screws", 0.06, "lb"], ["Joint compound", 0.06, "box"], ["Tape", 1.4, "ft"]]],
+      ["Partition 9' (one side)", "length", "Walls", [["Drywall 4x8 sheet", 0.3, "ea"], ['3-5/8" steel stud @16"', 0.85, "ea"], ['3-5/8" track', 2.1, "ft"], ["Screws", 0.03, "lb"], ["Joint compound", 0.03, "box"], ["Tape", 0.7, "ft"]]],
+      ["1-hr rated wall 10' (Type X both sides)", "length", "Walls", [['5/8" Type X 4x10 sheet', 0.53, "ea"], ['3-5/8" steel stud @16"', 0.85, "ea"], ['3-5/8" track', 2.1, "ft"], ["Batt insulation", 10, "sq ft"], ["Firestop sealant", 0.02, "tube"], ["Joint compound", 0.07, "box"]]],
+      ["Wall board area", "area", "Walls", [["Drywall 4x8 sheet", 0.034, "ea"], ["Screws", 0.003, "lb"], ["Joint compound", 0.003, "box"], ["Tape", 0.07, "ft"]]],
+      ["Drywall ceiling", "area", "Ceilings", [["Drywall 4x8 sheet", 0.034, "ea"], ["Furring channel", 0.75, "ft"], ["Hanger wire", 0.25, "ft"], ["Joint compound", 0.004, "box"]]],
+      ["Acoustic T-bar ceiling", "area", "Ceilings", [["2x4 ceiling tile", 0.13, "ea"], ["Main runner", 0.25, "ft"], ["Cross tee", 0.5, "ft"], ["Wall angle", 0.1, "ft"]]],
+      ["Bulkhead", "length", "Bulkheads & soffits", [["Drywall 4x8 sheet", 0.2, "ea"], ["Steel track & studs", 3, "ft"], ["Corner bead", 2, "ft"]]],
+      ["Door opening", "count", "Openings & specialties", [["Header track", 4, "ft"], ["King/jack studs", 4, "ea"]]],
+      ["Access panel", "count", "Openings & specialties", [["Access panel", 1, "ea"]]],
+      ["Corner bead", "length", "Finishing", [["Corner bead", 1.05, "ft"]]],
+    ],
+    scope: "Supply and install the steel stud framing, drywall and ceilings shown on the drawings listed under Basis of Quotation, taped and finished to Level 4 unless noted, as itemized in this quotation.",
+    excl: "Painting and wall coverings\nInsulation unless listed\nDoors, frames and hardware by others\nFirestopping of penetrations by trades making them\nHoisting and scaffolding beyond 12 ft unless listed\nOvertime and after-hours work\nPermit fees",
+    asks: ["Check my drywall takeoff for anything usually missed (bulkheads, corner bead, backing, rated details).", "Convert my wall lengths into sheets, studs and track at 9 ft and 16 inch centres.", "How many working days should a crew of three plan for this takeoff? Show your reasoning."],
+  },
+  concrete: {
+    name: "Concrete & masonry", icon: "🏗️", who: "concrete and masonry contractor", estimator: "concrete and masonry estimator in Ontario",
+    code: "CSA A23.1/A23.2 (concrete) and CSA A371 / S304 (masonry)",
+    cats: ["Slabs & flatwork", "Footings & walls", "Reinforcing", "Masonry", "Forming & accessories", "Other"],
+    examples: ["Slab on grade", "Strip footing", "Pad footing", "Foundation wall", "Pier", "Block wall", "Saw cut"],
+    presets: [
+      ['Slab on grade 4"', "area", "Slabs & flatwork", [["Concrete (cu yd)", 0.0123, "cu yd"], ["10M rebar @16\" e.w.", 1.6, "ft"], ["Vapour barrier", 1.1, "sq ft"], ["Chairs", 0.25, "ea"]]],
+      ['Slab on grade 6"', "area", "Slabs & flatwork", [["Concrete (cu yd)", 0.0185, "cu yd"], ["15M rebar @12\" e.w.", 2, "ft"], ["Vapour barrier", 1.1, "sq ft"], ["Chairs", 0.25, "ea"]]],
+      ["Sidewalk / flatwork", "area", "Slabs & flatwork", [["Concrete (cu yd)", 0.0123, "cu yd"], ["Granular base", 0.01, "cu yd"], ["Expansion joint", 0.1, "ft"]]],
+      ["Strip footing 24x12", "length", "Footings & walls", [["Concrete (cu yd)", 0.074, "cu yd"], ["15M rebar", 3, "ft"], ["Forms", 2, "sq ft"]]],
+      ["Foundation wall 8\" x 8'", "length", "Footings & walls", [["Concrete (cu yd)", 0.198, "cu yd"], ["15M rebar", 6, "ft"], ["Forms (both faces)", 16, "sq ft"], ["Damp-proofing", 8, "sq ft"]]],
+      ["Pad footing", "count", "Footings & walls", [["Concrete (cu yd)", 0.6, "cu yd"], ["15M rebar mat", 1, "ea"]]],
+      ["Pier / column", "count", "Footings & walls", [["Concrete (cu yd)", 0.3, "cu yd"], ["Sonotube", 1, "ea"], ["Rebar cage", 1, "ea"]]],
+      ['8" block wall', "area", "Masonry", [['8" CMU block', 1.125, "ea"], ["Mortar", 0.009, "cu yd"], ["Horizontal reinforcing", 0.6, "ft"]]],
+      ["Brick veneer", "area", "Masonry", [["Brick", 6.9, "ea"], ["Mortar", 0.007, "cu yd"], ["Brick ties", 0.25, "ea"]]],
+      ["Saw cut / control joint", "length", "Forming & accessories", [["Saw cut", 1, "ft"], ["Joint sealant", 0.02, "tube"]]],
+      ["Anchor bolt", "count", "Forming & accessories", [["Anchor bolt", 1, "ea"]]],
+    ],
+    scope: "Supply and place the concrete and masonry work shown on the drawings listed under Basis of Quotation, including forming, reinforcing and finishing as itemized in this quotation.",
+    excl: "Excavation, backfill and compaction by others\nTesting and inspection by owner\nWinter heat and protection unless listed\nPumping unless listed\nRebar engineering and shop drawings unless listed\nOvertime and after-hours work",
+    asks: ["Check my concrete takeoff for anything usually missed (thickened edges, dowels, joints, pump time).", "Convert my slab and footing quantities into cubic yards with 5% waste and a pour plan.", "How many working days should a crew of four plan for this takeoff? Show your reasoning."],
+  },
+  finishes: {
+    name: "Flooring & paint", icon: "🎨", who: "flooring and painting contractor", estimator: "flooring and painting estimator",
+    code: "manufacturer installation instructions and the project specification",
+    cats: ["Flooring", "Base & transitions", "Wall finishes", "Ceiling finishes", "Tile", "Other"],
+    examples: ["LVT flooring", "Carpet tile", "Ceramic tile", "Rubber base", "Transition strip", "Paint walls"],
+    presets: [
+      ["LVT flooring", "area", "Flooring", [["LVT (box ~24 sq ft)", 0.044, "box"], ["Adhesive", 0.004, "pail"], ["Floor prep", 1, "sq ft"]]],
+      ["Carpet tile", "area", "Flooring", [["Carpet tile (box ~48 sq ft)", 0.023, "box"], ["Adhesive", 0.003, "pail"]]],
+      ["Sheet vinyl", "area", "Flooring", [["Sheet vinyl", 0.12, "sq yd"], ["Adhesive", 0.003, "pail"]]],
+      ["Ceramic floor tile", "area", "Tile", [["Tile", 1.1, "sq ft"], ["Thinset", 0.02, "bag"], ["Grout", 0.01, "bag"]]],
+      ["Ceramic wall tile", "area", "Tile", [["Tile", 1.1, "sq ft"], ["Thinset", 0.02, "bag"], ["Grout", 0.01, "bag"], ["Trim", 0.1, "ft"]]],
+      ['4" rubber base', "length", "Base & transitions", [['4" rubber base', 1.05, "ft"], ["Base adhesive", 0.01, "tube"]]],
+      ["Transition strip", "count", "Base & transitions", [["Transition strip", 1, "ea"]]],
+      ["Paint walls (2 coats)", "area", "Wall finishes", [["Primer", 0.0029, "gal"], ["Paint", 0.0057, "gal"], ["Sundries", 1, "sq ft"]]],
+      ["Paint ceiling", "area", "Ceiling finishes", [["Ceiling paint", 0.0057, "gal"]]],
+      ["Paint door & frame", "count", "Wall finishes", [["Paint", 0.25, "gal"]]],
+    ],
+    scope: "Supply and install the flooring and finishes shown on the drawings listed under Basis of Quotation, including surface preparation as itemized in this quotation.",
+    excl: "Major floor levelling beyond 1/8\" in 10 ft unless listed\nMoisture testing and mitigation unless listed\nMoving furniture and equipment\nPatching of substrate by others\nOvertime and after-hours work",
+    asks: ["Check my finishes takeoff for anything usually missed (base, transitions, floor prep, attic stock).", "Convert my areas into boxes, pails and gallons with sensible waste.", "How many working days should a crew of two plan for this takeoff? Show your reasoning."],
+  },
+};
+const TRADE_IDS = Object.keys(TRADES);
+
+let TRADE = "electrical"; try { const t = localStorage.getItem("tv-trade"); if (t && TRADES[t]) TRADE = t; } catch (e) { }
+const tr = () => TRADES[(S && S.proj && S.proj.trade) || TRADE] || TRADES.electrical;
+let CATS = TRADES[TRADE].cats.slice();
+function setTrade(t) { if (!TRADES[t]) return; TRADE = t; try { localStorage.setItem("tv-trade", t); } catch (e) { } const b = document.getElementById("btnTrade"); if (b) b.textContent = TRADES[t].icon + " " + TRADES[t].name + " · change"; }
+function catsAll(items) { const extra = [...new Set((items || []).map(i => i.cat).filter(c => c && !CATS.includes(c)))]; return [...CATS, ...extra]; }
+function presetOf(name) { const k = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); for (const id of TRADE_IDS) for (const pr of TRADES[id].presets) if (String(pr[0]).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() === k) return pr; return null; }
+function asmStarter(it) { const pr = presetOf(it.name); if (pr && pr[3]?.length) return pr[3]; const same = tr().presets.find(x => x[2] === it.cat && x[1] === it.kind && x[3]?.length); return same ? same[3] : null; }
+function openTradePicker(onPick) {
+  openDialog(`<div class="dlg-h"><h3>Choose your trade</h3></div><div class="dlg-b"><p class="muted" style="margin:0">New jobs start with this trade's items, materials and quote wording. Existing jobs keep theirs.</p>
+   <div class="trade-grid">${TRADE_IDS.map(id => `<button class="trade-card ${id === TRADE ? "on" : ""}" data-trade="${id}" type="button"><span class="ic">${TRADES[id].icon}</span><b>${TRADES[id].name}</b><span class="muted" style="font-size:12px">${TRADES[id].examples.slice(0, 3).join(", ")}…</span></button>`).join("")}</div></div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  $$("[data-trade]").forEach(b => b.onclick = () => { setTrade(b.dataset.trade); closeDialog(); toast(TRADES[TRADE].name + " selected. New jobs use it."); onPick && onPick(); });
+}
 const COLORS = ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#0EA5B7", "#E8590C", "#D6409F", "#2F9E44", "#5B6B82", "#B5651D", "#3B5BDB"];
 const M_PER_FT = 0.3048;
 const SCALES = [
@@ -495,15 +691,15 @@ function updateStoreLabel() {
 /* ------------------------- Project model ------------------------- */
 function newProject(name) {
   return {
-    id: "p" + uid(), name: name || "New job", createdAt: Date.now(), updatedAt: Date.now(), units: "ft",
+    id: "p" + uid(), name: name || "New job", createdAt: Date.now(), updatedAt: Date.now(), units: "ft", trade: TRADE,
     docs: [], pages: [], items: [], marks: [], runs: [], markups: [],
     quote: {
       client: "", attn: "", site: "", quoteNo: "Q-" + new Date().toISOString().slice(2, 10).replace(/-/g, ""), date: new Date().toISOString().slice(0, 10), valid: 30,
-      scope: "Supply and install the electrical work shown on the drawings listed under Basis of Quotation, including the devices, lighting and branch circuit runs itemized in this quotation.",
+      scope: TRADES[TRADE].scope,
       clar: "Quantities are taken from the drawings listed above.\nWork is carried out during regular hours, Monday to Friday, 7:00 a.m. to 3:30 p.m.\nAccess to the work areas is clear and available when work is scheduled.",
-      excl: "Permit and ESA inspection fees unless listed\nPatching, painting and making good\nCore drilling, X-ray scanning and firestopping by others\nFire alarm verification\nOvertime and after-hours work\nUtility company charges\nOwner-supplied fixtures and equipment",
+      excl: TRADES[TRADE].excl,
       pay: "30% deposit on acceptance. Progress billing monthly. Balance due on substantial completion, net 30 days.",
-      markup: 15, labourMode: "items", crew: 2, days: 5, hpd: 8, rate: 95, other: 0, otherLbl: "Permits and inspection", showUnitPrices: false,
+      markup: 15, labourFactor: 0, contingency: 0, overhead: 0, profit: 0, bond: 0, labourMode: "items", crew: 2, days: 5, hpd: 8, rate: 95, other: 0, otherLbl: "Permits and inspection", showUnitPrices: false,
     },
   };
 }
@@ -783,7 +979,7 @@ function drawNow() {
     g.restore(); g.strokeStyle = "rgba(90,106,130,.7)"; g.lineWidth = 1.5 * px; g.setLineDash([6 * px, 4 * px]); g.strokeRect(e[0], e[1], e[2], e[3]); g.setLineDash([]);
   }
   // markups
-  for (const mk of P().markups.filter(m => m.page === pg.id)) drawMarkup(g, mk, px, S.sel?.type === "markup" && S.sel.id === mk.id);
+  for (const mk of P().markups.filter(m => m.page === pg.id && !(m.item && S.hidden.has(m.item)))) drawMarkup(g, mk, px, S.sel?.type === "markup" && S.sel.id === mk.id);
   // runs
   for (const r of P().runs.filter(r => r.page === pg.id)) {
     const it = itemOf(r.item); if (!it || S.hidden.has(it.id)) continue;
@@ -965,7 +1161,8 @@ function renderSubbar() {
   } else if (S.tool === "scale") {
     const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
-    h = `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
+    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>`; }
+    h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
     if (S.tool === "stamp") h += `<select class="inp" id="stampSel" style="width:auto">${["REVISED", "APPROVED", "AS BUILT", "FOR REVIEW", "NOT IN CONTRACT", "FIELD VERIFY"].map(s => `<option ${S.markStyle.stamp === s ? "selected" : ""}>${s}</option>`).join("")}</select>`;
   }
   b.innerHTML = h; b.hidden = !h;
@@ -1037,7 +1234,7 @@ function finishDraft() {
     commit(); P().runs.push({ id: uid(), item: it.id, page: pg.id, pts: sq, drops: devices, dropLen: S.dropLen ?? (P().units === "m" ? 3 : 10), circuit: "Circuit " + n, homerun: true });
     S.draft = null; changed(); renderSubbar();
     const L = runLen(P().runs[P().runs.length - 1], pg); toast(`Circuit ${n}: ${devices} device${devices === 1 ? "" : "s"}, ${L == null ? "set the sheet scale to get the length" : lenTxt(L) + " of wire including drops and waste"}.`);
-  } else if (d.kind === "area" && d.pts.length >= 3) { commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: S.markStyle.color, at: Date.now() }); S.draft = null; changed(); }
+  } else if (d.kind === "area" && d.pts.length >= 3) { const ai = itemOf(S.areaItem); commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, at: Date.now() }); S.draft = null; changed(); if (ai && !pg.scale) toast("Area saved. Set this sheet's scale to get its size."); }
   else { S.draft = null; draw(); }
 }
 function hitAnything(x, y) {
@@ -1124,7 +1321,7 @@ function openPriceBook() {
 }
 function newItem(o) {
   const used = new Set(P().items.map(i => i.color)); const color = COLORS.find(c => !used.has(c)) || COLORS[P().items.length % COLORS.length];
-  const it = { id: "i" + uid(), name: o.name || "New item", kind: o.kind || "count", cat: o.cat || "Other", color, unit: o.kind === "length" ? (P().units === "m" ? "m" : "ft") : "ea", price: o.price ?? null, labour: o.labour ?? null, waste: o.kind === "length" ? 10 : 0, sens: 6, rotate: true, templates: o.templates || [], notes: "", asm: [] }; pbApply(it); return it;
+  const it = { id: "i" + uid(), name: o.name || "New item", kind: o.kind || "count", cat: o.cat || "Other", color, unit: o.kind === "length" ? (P().units === "m" ? "m" : "ft") : o.kind === "area" ? (P().units === "m" ? "m²" : "sq ft") : "ea", price: o.price ?? null, labour: o.labour ?? null, waste: o.kind === "length" ? 10 : o.kind === "area" ? 5 : 0, sens: 6, rotate: true, templates: o.templates || [], notes: "", asm: [] }; pbApply(it); return it;
 }
 async function captureTemplate(pg, bx, by, bw, bh) {
   const r = await renderPage(pg); const X = Math.round(bx * r.ppt), Y = Math.round(by * r.ppt), W = Math.round(bw * r.ppt), H = Math.round(bh * r.ppt);
@@ -1165,9 +1362,9 @@ async function startTemplate(bx, by, bw, bh) {
       const blob = await toBlob(scaleCanvas(c, 700));
       const opts = { modelTier: "quick" }; if (S.aiImages) opts.images = [blob];
       if (!S.aiImages) return;
-      const j = await S.ai.json(`This image is a crop from an electrical construction drawing (Canadian commercial/residential). The symbol inside the red box is the one being counted. Identify it the way an Ontario electrical estimator would name it on a material takeoff (for example "Duplex receptacle", "GFCI receptacle", "Single pole switch", "LED pot light", "2x4 LED troffer", "Smoke detector", "Data outlet", "Exit sign", "Panel"). Reply with only JSON: {"name": string, "category": one of ${JSON.stringify(CATS)}, "confidence": number 0-1}.`, opts);
+      const j = await S.ai.json(`This image is a crop from a ${tr().name.toLowerCase()} construction drawing (Canadian commercial/residential). The symbol inside the red box is the one being counted. Identify it the way an ${tr().estimator} would name it on a material takeoff (for example ${tr().examples.map(e => '"' + e + '"').join(", ")}). Reply with only JSON: {"name": string, "category": one of ${JSON.stringify(CATS)}, "confidence": number 0-1}.`, opts);
       if ($("#tpName") && !$("#tpName").value && j?.name) { $("#tpName").value = String(j.name).slice(0, 60); if (CATS.includes(j.category)) $("#tpCat").value = j.category; }
-    } catch (e) { if ($("#tpName")) $("#tpName").placeholder = "e.g. Duplex receptacle"; }
+    } catch (e) { if ($("#tpName")) $("#tpName").placeholder = "e.g. " + tr().examples[0]; }
   }
 }
 function scaleCanvas(c, maxDim) { const s = Math.min(1, maxDim / Math.max(c.width, c.height)); if (s >= 1) return c; const o = document.createElement("canvas"); o.width = Math.round(c.width * s); o.height = Math.round(c.height * s); const g = o.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(c, 0, 0, o.width, o.height); return o; }
@@ -1212,7 +1409,7 @@ async function reviewMaybes(it) {
     $("#mbAI").disabled = true; $("#aiNote").textContent = "AI is checking each one…";
     try {
       const sheet = contactSheet(it.templates[0], crops.map(c => c.c));
-      const j = await S.ai.json(`The first cell (labelled REF) shows a symbol from an electrical drawing: "${it.name}". The numbered cells are candidate locations from the same drawings. For each numbered cell, decide whether it contains the SAME symbol as REF (ignore wires, text or lines passing through, and rotation). Reply with only JSON: {"same": [numbers], "different": [numbers]}.`, { images: [await toBlob(sheet)], modelTier: "default" });
+      const j = await S.ai.json(`The first cell (labelled REF) shows a symbol from a ${tr().name.toLowerCase()} drawing: "${it.name}". The numbered cells are candidate locations from the same drawings. For each numbered cell, decide whether it contains the SAME symbol as REF (ignore wires, text or lines passing through, and rotation). Reply with only JSON: {"same": [numbers], "different": [numbers]}.`, { images: [await toBlob(sheet)], modelTier: "default" });
       for (const n of j.same || []) if (state[n - 1] !== undefined) state[n - 1] = true;
       for (const n of j.different || []) if (state[n - 1] !== undefined) state[n - 1] = false;
       paint(); $("#aiNote").textContent = `AI marked ${(j.same || []).length} as matches. Check them, then press Add selected.`;
@@ -1260,7 +1457,7 @@ async function startLegend(bx, by, bw, bh) {
   };
   if (S.ai && S.aiImages) {
     try {
-      const j = await S.ai.json(`This is the symbol legend from an electrical drawing. Each symbol is boxed in red with a red number to its left. Read the description written beside each numbered symbol. Reply with only JSON: an array of {"n": number, "name": short takeoff name (Title case, under 40 characters, e.g. "Duplex receptacle", "Single pole switch", "LED pot light"), "category": one of ${JSON.stringify(CATS)}}. Include every number from 1 to ${rows.length}.`, { images: [await toBlob(scaleCanvas(big, 1600))], modelTier: "default" });
+      const j = await S.ai.json(`This is the symbol legend from a ${tr().name.toLowerCase()} drawing. Each symbol is boxed in red with a red number to its left. Read the description written beside each numbered symbol. Reply with only JSON: an array of {"n": number, "name": short takeoff name (Title case, under 40 characters, e.g. ${tr().examples.slice(0, 3).map(e => '"' + e + '"').join(", ")}), "category": one of ${JSON.stringify(CATS)}}. Include every number from 1 to ${rows.length}.`, { images: [await toBlob(scaleCanvas(big, 1600))], modelTier: "default" });
       for (const e of (Array.isArray(j) ? j : j.items || [])) { const i = (+e.n) - 1; const nm = $(`[data-nm="${i}"]`); if (nm && !nm.value) nm.value = String(e.name || "").slice(0, 60); const ct = $(`[data-ct="${i}"]`); if (ct && CATS.includes(e.category)) ct.value = e.category; }
       if ($("#lgNote")) $("#lgNote").textContent = "Names were read from the legend. Check them, untick any you don't want, then count.";
     } catch (e) { if ($("#lgNote")) $("#lgNote").textContent = aiErr(e) + " Name each symbol yourself, then count."; }
@@ -1325,17 +1522,22 @@ function hideCompareBar() { if ($("#cmpExit")) { $("#subbar").hidden = true; $("
 function pagesInScope() { const p = P(); if (S.scope === "page") return new Set([page()?.id]); if (S.scope.startsWith("set:")) { const set = S.scope.slice(4); return new Set(p.pages.filter(g => docOf(g).set === set).map(g => g.id)); } return new Set(p.pages.map(g => g.id)); }
 function qtyOf(it, pages = pagesInScope()) {
   if (it.kind === "count") return P().marks.filter(m => m.item === it.id && pages.has(m.page)).length;
+  if (it.kind === "area") { let A = 0; for (const mk of P().markups) if (mk.type === "area" && mk.item === it.id && pages.has(mk.page)) { const pg = P().pages.find(g => g.id === mk.page); if (pg?.scale) A += polyArea(mk.pts) * pg.scale.m * pg.scale.m; } A *= 1 + (it.waste || 0) / 100; return P().units === "m" ? A : A / (M_PER_FT * M_PER_FT); }
   let L = 0; for (const r of P().runs) if (r.item === it.id && pages.has(r.page)) { const pg = P().pages.find(g => g.id === r.page); const l = runLen(r, pg); if (l != null) L += l; }
   return P().units === "m" ? L : L / M_PER_FT;
 }
-const unitOf = (it) => it.kind === "length" ? (P().units === "m" ? "m" : "ft") : (it.unit || "ea");
+const unitOf = (it) => it.kind === "length" ? (P().units === "m" ? "m" : "ft") : it.kind === "area" ? (P().units === "m" ? "m²" : "sq ft") : (it.unit || "ea");
+function lineCost(it, qty) { const q = P().quote, pr = priceOf(it); const mat = pr != null ? qty * pr : 0; const hrs = it.labour != null ? qty * it.labour * (1 + (+q.labourFactor || 0) / 100) : 0; return { mat, matM: mat * (1 + (+q.markup || 0) / 100), hrs, lab: hrs * (+q.rate || 0) }; }
+function markupsOn(base) { const q = P().quote; const cont = base * (+q.contingency || 0) / 100, oh = (base + cont) * (+q.overhead || 0) / 100, pf = (base + cont + oh) * (+q.profit || 0) / 100, bond = (base + cont + oh + pf) * (+q.bond || 0) / 100; return { cont, oh, pf, bond, sell: base + cont + oh + pf + bond }; }
 function totals() {
   const q = P().quote, all = new Set(P().pages.map(p => p.id));
-  const lines = P().items.map(it => { const qty = qtyOf(it, all); const qr = it.kind === "length" ? Math.ceil(qty) : qty; const pr = priceOf(it); return { it, qty: qr, unit: unitOf(it), price: pr, ext: pr != null ? qr * pr : null, hrs: it.labour != null ? qr * it.labour : null }; }).filter(l => l.qty > 0);
+  const alts = P().items.filter(it => it.alt).map(it => { const qty = qtyOf(it, all), qr = it.kind !== "count" ? Math.ceil(qty) : qty, c = lineCost(it, qr); const sell = markupsOn(c.matM + c.lab).sell; return { it, qty: qr, unit: unitOf(it), sell, tax: sell * (+CO.hst || 0) / 100 }; }).filter(a => a.qty > 0);
+  const lines = P().items.filter(it => !it.alt).map(it => { const qty = qtyOf(it, all); const qr = it.kind !== "count" ? Math.ceil(qty) : qty; const pr = priceOf(it); return { it, qty: qr, unit: unitOf(it), price: pr, ext: pr != null ? qr * pr : null, hrs: it.labour != null ? qr * it.labour : null }; }).filter(l => l.qty > 0);
   const mat = lines.reduce((a, l) => a + (l.ext || 0), 0), matM = mat * (1 + (+q.markup || 0) / 100);
-  const hrs = q.labourMode === "crew" ? (+q.crew || 0) * (+q.days || 0) * (+q.hpd || 0) : lines.reduce((a, l) => a + (l.hrs || 0), 0);
-  const lab = hrs * (+q.rate || 0), other = +q.other || 0, sub = matM + lab + other, tax = sub * (+CO.hst || 0) / 100;
-  return { lines, mat, matM, hrs, lab, other, sub, tax, total: sub + tax, unpriced: lines.filter(l => l.price == null).length };
+  const hrs = (q.labourMode === "crew" ? (+q.crew || 0) * (+q.days || 0) * (+q.hpd || 0) : lines.reduce((a, l) => a + (l.hrs || 0), 0)) * (1 + (+q.labourFactor || 0) / 100);
+  const lab = hrs * (+q.rate || 0), other = +q.other || 0, cost = matM + lab + other; const mk = markupsOn(cost); const sub = mk.sell, tax = sub * (+CO.hst || 0) / 100;
+  const k = cost > 0 ? sub / cost : 1;
+  return { lines, mat, matM, hrs, lab, other, cost, ...mk, k, sub, tax, total: sub + tax, alts, unpriced: lines.filter(l => l.price == null).length };
 }
 
 /* ------------------------- Side panels ------------------------- */
@@ -1346,15 +1548,15 @@ function renderTakeoff() {
   const items = p.items; const cnt = items.filter(i => i.kind === "count").reduce((a, i) => a + qtyOf(i, sc), 0);
   const len = items.filter(i => i.kind === "length").reduce((a, i) => a + qtyOf(i, sc), 0);
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
-  let h = `<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
-   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Devices</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>`;
+  let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div><div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
+   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>`;
   if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
-  if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> to trace conduit and cable.</div>`;
-  for (const cat of CATS) {
+  if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.</div>`;
+  for (const cat of catsAll(items)) {
     const its = items.filter(i => i.cat === cat); if (!its.length) continue;
     h += `<div class="cat"><div class="cat-h"><b>${cat}</b></div>` + its.map(it => {
       const q = qtyOf(it, sc), hid = S.hidden.has(it.id);
-      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
+      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
        <span class="acts"><button data-eye="${it.id}" title="${hid ? "Show" : "Hide"} on drawing">${svgI(hid ? "eyeoff" : "eye", 16)}</button>${it.kind === "count" && it.templates?.length ? `<button data-recount="${it.id}" title="Recount on all sheets">${svgI("redo", 16)}</button>` : ""}<button data-edit="${it.id}" title="Edit item">${svgI("edit", 16)}</button></span></div>`;
     }).join("") + `</div>`;
   }
@@ -1389,12 +1591,64 @@ function renderQuote() {
    ${ta("scope", "Scope of work", 4)}${ta("clar", "Clarifications (one per line)", 4)}${ta("excl", "Exclusions (one per line)", 5)}${ta("pay", "Payment terms", 2)}
    <div class="eyebrow">Labour</div>
    <label class="field"><span>Labour from</span><select class="inp" data-q="labourMode"><option value="items" ${q.labourMode === "items" ? "selected" : ""}>Hours per item (from the takeoff)</option><option value="crew" ${q.labourMode === "crew" ? "selected" : ""}>Crew size × days</option></select></label>
-   <div class="grid2">${f("crew", "Electricians", "number", 'min="0"')}${f("days", "Working days", "number", 'min="0" step="0.5"')}${f("hpd", "Hours per day", "number", 'min="0"')}${f("rate", "Labour rate $/h (internal)", "number", 'min="0" step="0.01"')}</div>
-   <div class="grid2">${f("markup", "Material markup %", "number", 'step="0.5"')}${f("other", "Other costs $", "number", 'step="0.01"')}</div>${f("otherLbl", "Other costs label")}
+   <div class="grid2">${f("crew", "Crew size", "number", 'min="0"')}${f("days", "Working days", "number", 'min="0" step="0.5"')}${f("hpd", "Hours per day", "number", 'min="0"')}${f("rate", "Labour rate $/h (internal)", "number", 'min="0" step="0.01"')}</div>
+   <div class="grid2">${f("labourFactor", "Labour difficulty % (height, access, occupied site)", "number", 'step="1"')}${f("markup", "Material markup %", "number", 'step="0.5"')}</div>
+   <div class="grid2">${f("other", "Other costs $", "number", 'step="0.01"')}${f("otherLbl", "Other costs label")}</div>
+   <div class="eyebrow">Bid markups (internal, not shown to the client)</div>
+   <div class="grid2">${f("contingency", "Contingency %", "number", 'step="0.5"')}${f("overhead", "Overhead %", "number", 'step="0.5"')}${f("profit", "Profit %", "number", 'step="0.5"')}${f("bond", "Bond %", "number", 'step="0.1"')}</div>
    <label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
-   <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour</td><td class="r num">${money(t.lab)}</td></tr>${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
+   <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour${+q.labourFactor ? ` (incl. ${q.labourFactor}% difficulty)` : ""}</td><td class="r num">${money(t.lab)}</td></tr>${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}${t.cont ? `<tr><td>Contingency</td><td class="r num">${money(t.cont)}</td></tr>` : ""}${t.oh ? `<tr><td>Overhead</td><td class="r num">${money(t.oh)}</td></tr>` : ""}${t.pf ? `<tr><td>Profit</td><td class="r num">${money(t.pf)}</td></tr>` : ""}${t.bond ? `<tr><td>Bond</td><td class="r num">${money(t.bond)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
+   ${t.alts.length ? `<div class="eyebrow">Alternates (priced separately)</div><table class="t">${t.alts.map(a => `<tr><td>${esc(a.it.name)} <span class="muted">${fmt(a.qty)} ${a.unit}</span></td><td class="r num">add ${money(a.sell)}</td></tr>`).join("")}</table>` : ""}
+   ${bidSummaryHtml(t)}
+   ${changeOrderHtml()}
    <div class="row">${S.ai ? '<button class="btn" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
+}
+
+function bidSummaryHtml(t) {
+  const p = P(), all = new Set(p.pages.map(g => g.id)); const by = {};
+  for (const l of t.lines) { const c = lineCost(l.it, l.qty); const k = l.it.cat || "Other"; const e = by[k] ||= { mat: 0, hrs: 0 }; e.mat += c.matM; e.hrs += c.hrs; }
+  const sheets = p.pages.map(g => { const one = new Set([g.id]); let mat = 0, hrs = 0; for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, one); if (!q) continue; const c = lineCost(it, q); mat += c.matM; hrs += c.hrs; } return { n: g.name, mat, hrs }; }).filter(x => x.mat || x.hrs);
+  if (!Object.keys(by).length) return "";
+  return `<details style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid summary by category and sheet</summary>
+    <table class="t"><tr><th style="text-align:left">Category</th><th class="r">Material</th><th class="r">Hours</th></tr>${Object.entries(by).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r num">${money(v.mat)}</td><td class="r num">${fmt(v.hrs, 1)}</td></tr>`).join("")}</table>
+    ${sheets.length > 1 ? `<table class="t"><tr><th style="text-align:left">Sheet / area</th><th class="r">Material</th><th class="r">Hours</th></tr>${sheets.map(x => `<tr><td>${esc(x.n)}</td><td class="r num">${money(x.mat)}</td><td class="r num">${fmt(x.hrs, 1)}</td></tr>`).join("")}</table>` : ""}</details>`;
+}
+function coRows() {
+  const p = P(), b = p.baseline; if (!b) return [];
+  const all = new Set(p.pages.map(g => g.id)); const t = totals(); const rows = [];
+  const ids = new Set([...Object.keys(b.q), ...p.items.map(i => i.id)]);
+  for (const id of ids) { const it = itemOf(id); const was = b.q[id] || 0; const now = it ? (it.kind !== "count" ? Math.ceil(qtyOf(it, all)) : qtyOf(it, all)) : 0; const d = now - was; if (Math.abs(d) < 1e-9) continue;
+    const ref = it || { name: b.names?.[id] || "Removed item", labour: b.lab?.[id] ?? null, price: b.price?.[id] ?? null, asm: [] }; const c = lineCost(ref, Math.abs(d)); const val = (c.matM + c.lab) * t.k * Math.sign(d);
+    rows.push({ name: ref.name, unit: it ? unitOf(it) : (b.units?.[id] || ""), was, now, d, val }); }
+  return rows.sort((a, b2) => Math.abs(b2.val) - Math.abs(a.val));
+}
+function changeOrderHtml() {
+  const p = P(); if (!p.baseline) return `<div class="row"><button class="btn" id="coLock">Lock this as the bid (to track change orders)</button></div>`;
+  const rows = coRows(), tot = rows.reduce((a, r) => a + r.val, 0);
+  return `<div class="eyebrow">Changes since the bid (${new Date(p.baseline.at).toLocaleDateString("en-CA")})</div>
+   ${rows.length ? `<table class="t"><tr><th style="text-align:left">Item</th><th class="r">Bid</th><th class="r">Now</th><th class="r">Value</th></tr>${rows.map(r => `<tr><td>${esc(r.name)}</td><td class="r num">${fmt(r.was)}</td><td class="r num">${fmt(r.now)}</td><td class="r num" style="color:${r.val >= 0 ? "var(--ok,#12A150)" : "var(--bad)"}">${r.val >= 0 ? "+" : "−"}${money(Math.abs(r.val))}</td></tr>`).join("")}<tr><td><b>Change order total</b></td><td></td><td></td><td class="r num"><b>${tot >= 0 ? "+" : "−"}${money(Math.abs(tot))}</b></td></tr></table>
+   <div class="row"><button class="btn sm" id="coXlsx">Change order → Excel</button><button class="btn sm" id="coLock">Re-lock at today's quantities</button></div>` : `<p class="muted" style="margin:0;font-size:12.5px">No changes yet. When an addendum or revision changes quantities, the adds and omits show here with their value.</p><div class="row"><button class="btn sm" id="coLock">Re-lock at today's quantities</button></div>`}`;
+}
+function lockBaseline() {
+  const p = P(), all = new Set(p.pages.map(g => g.id)); commit();
+  p.baseline = { at: Date.now(), total: totals().total, q: {}, names: {}, units: {}, price: {}, lab: {} };
+  for (const it of p.items) { p.baseline.q[it.id] = it.kind !== "count" ? Math.ceil(qtyOf(it, all)) : qtyOf(it, all); p.baseline.names[it.id] = it.name; p.baseline.units[it.id] = unitOf(it); p.baseline.price[it.id] = priceOf(it); p.baseline.lab[it.id] = it.labour; }
+  changed(); toast("Bid locked. Changes to quantities now show as adds and omits in the Quote tab.");
+}
+async function exportChangeOrder() {
+  const p = P(), rows = coRows(), H = (a) => a.map(v => ({ v, s: "head" })), tot = rows.reduce((a, r) => a + r.val, 0);
+  const s1 = [[{ v: (CO.company || "Change order") + " — Change Order", s: "title" }], [p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Against bid of " + new Date(p.baseline.at).toLocaleDateString("en-CA") + " · prepared " + new Date().toLocaleDateString("en-CA")], [], H(["Item", "Unit", "Bid qty", "Revised qty", "Add / omit", "Value"])];
+  for (const r of rows) s1.push([r.name, r.unit, r.was, r.now, r.d, { v: r.val, s: "money" }]);
+  s1.push([], [{ v: "Change order total (before tax)", s: "b" }, "", "", "", "", { v: tot, s: "bmoney" }]);
+  saveFile(slug(p.name) + "-change-order.xlsx", await buildXlsx([{ name: "Change Order", cols: [36, 7, 10, 12, 11, 14], rows: s1 }]));
+}
+async function exportRFQ() {
+  const p = P(), rows = takeoffRows(), H = (a) => a.map(v => ({ v, s: "head" })); const mats = {};
+  for (const r of rows) { if (r.it.asm?.length) for (const m of r.it.asm) { const k = (m.n || "") + "|" + (m.u || ""); (mats[k] ||= { n: m.n, u: m.u, q: 0 }).q += (+m.q || 0) * r.q; } else { const k = r.it.name + "|" + r.unit; (mats[k] ||= { n: r.it.name, u: r.unit, q: 0 }).q += r.q; } }
+  const s1 = [[{ v: "Request for pricing", s: "title" }], [(CO.company || "") + (CO.phone ? " · " + CO.phone : "") + (CO.email ? " · " + CO.email : "")], ["Project: " + p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Please quote the following and return by: ____________"], [], H(["Material", "Qty", "Unit", "Your unit price", "Extended", "Lead time / notes"])];
+  for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) s1.push([e.n, Math.ceil(e.q * 100) / 100, e.u || "", "", "", ""]);
+  saveFile(slug(p.name) + "-price-request.xlsx", await buildXlsx([{ name: "Price Request", cols: [40, 10, 7, 15, 13, 28], rows: s1 }]));
 }
 
 /* ------------------------- AI panel ------------------------- */
@@ -1403,7 +1657,7 @@ function renderAIPane() {
   if (!S.ai) { el.innerHTML = `<div class="pane"><p class="muted" style="line-height:1.55;margin:0">Ask AI works when this app is opened in Claude. It answers questions about your drawings and takeoff, names symbols, reads legends and checks possible matches.</p></div>`; return; }
   el.innerHTML = `<div class="pane" id="chatScroll"><div class="chat" id="chat"></div>
     <div id="chatStart"><p class="muted" style="margin:0 0 8px;line-height:1.5">Ask about this job, the drawing on screen, materials or installation. ${S.web ? "It can search the live web and read pages, and lists the links it used." : "Answers use your takeoff and what's on screen. Live web search works when this app is open in the Claude desktop app."}</p>
-    <div class="sugs"><button data-sug="Check my takeoff for anything an electrician usually misses on a job like this.">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="List the rough-in material (boxes, rings, plates, connectors) I need for the devices counted.">Rough-in material list</button><button data-sug="How many working days should two electricians plan for this takeoff? Show your reasoning.">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian electrical industry news that matters to a GTA contractor (copper prices, ESA bulletins, OESC updates, supply shortages). Give me 5 short bullets with links.">Electrical industry news</button><button data-sug="Find the manufacturer spec sheet for a 2x4 LED troffer suitable for a Canadian office fit-out and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
+    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
     <div class="ask"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><textarea class="inp" id="askBox" rows="2" placeholder="Ask anything about this job…"></textarea><div class="row" style="gap:12px">${S.web ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askWeb" checked> Search the live web</label>' : ""}${S.aiImages ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askView"> Include what I\'m looking at</label>' : ""}</div></div><button class="btn primary" id="askGo">Ask</button></div>`;
   for (const m of S.chat) addMsg(m.role, m.content, false);
 }
@@ -1414,13 +1668,13 @@ function jobContext() {
   return `JOB: ${p.name}\nClient: ${p.quote.client || "-"}; Site: ${p.quote.site || "-"}\nSheets (${p.pages.length}): ${p.pages.map(g => g.name).slice(0, 40).join(", ")}\nCurrent sheet: ${page()?.name || "-"} (scale ${page()?.scale?.label || "not set"})\nTAKEOFF:\n${lines || "(nothing counted yet)"}\nLabour hours in quote: ${fmt(t.hrs, 1)}. Units: ${p.units}.`;
 }
 const WEB = "host:claude_browser";
-const RULES = `You are the estimating assistant inside 20 Vision Electrical Take Off, an electrical takeoff and quoting app used by a licensed electrical contractor (Master Electrician) in the Greater Toronto Area, Ontario, Canada. Answer like an experienced Ontario electrical estimator: practical, specific, in plain words, with quantities when useful. Prices are in Canadian dollars. Refer to the Canadian Electrical Code / Ontario Electrical Safety Code by rule number only — never quote code text — and tell the user to confirm in their own copy. Say plainly when you are unsure. You cannot see the contractor's account prices at any supplier. Keep answers short unless asked for detail. Plain text, no markdown tables.`;
+const rulesText = () => `You are the estimating assistant inside 20 Vision Material Take Off, a takeoff and quoting app. This job is for a ${tr().who} in Ontario, Canada. Answer like an experienced ${tr().estimator}: practical, specific, in plain words, with quantities when useful. Prices are in Canadian dollars. Refer to ${tr().code} by section number only — never quote code text — and tell the user to confirm in their own copy. Say plainly when you are unsure. You cannot see the contractor's account prices at any supplier. Keep answers short unless asked for detail. Plain text, no markdown tables.`;
 let aiCtl = null;
 async function askAI(text, { scan = false } = {}) {
   if (!S.ai) return; addMsg("user", scan ? "Scan this sheet and compare with my counts." : text);
   const bubble = addMsg("assistant", "Thinking…", false);
-  const turns = [{ role: "user", content: RULES + "\n\n" + jobContext() }, ...S.chat.slice(-12)];
-  if (scan) turns[turns.length - 1] = { role: "user", content: `Here is the current drawing sheet "${page()?.name}". List the electrical devices and fixtures you can see by type with approximate counts, then compare with my takeoff above and point out anything I may have missed or miscounted. The image is downscaled, so say when symbols are too small to read.` };
+  const turns = [{ role: "user", content: rulesText() + "\n\n" + jobContext() }, ...S.chat.slice(-12)];
+  if (scan) turns[turns.length - 1] = { role: "user", content: `Here is the current drawing sheet "${page()?.name}". List the ${tr().name.toLowerCase()} items you can see by type with approximate counts, then compare with my takeoff above and point out anything I may have missed or miscounted. The image is downscaled, so say when symbols are too small to read.` };
   const opts = { cache: false, onText: ({ text }) => { bubble.textContent = text; $("#chatScroll").scrollTop = 1e9; } };
   try {
     if (S.aiImages && (scan || $("#askView")?.checked)) opts.images = [await viewImage(scan)];
@@ -1457,7 +1711,7 @@ async function viewImage(whole) {
 async function draftScope() {
   if (!S.ai) return; const btn = $("#aiScope"); if (btn) { btn.disabled = true; btn.textContent = "Drafting…"; }
   try {
-    const j = await S.ai.json(RULES + "\n\n" + jobContext() + `\n\nWrite the client-facing quotation text for this job. Reply with only JSON: {"scope": a 2-4 sentence scope of work paragraph, "clarifications": array of 4-7 short lines, "exclusions": array of 6-9 short lines}. Base it on the takeoff; do not mention prices or hourly rates.`, { modelTier: "default" });
+    const j = await S.ai.json(rulesText() + "\n\n" + jobContext() + `\n\nWrite the client-facing quotation text for this job. Reply with only JSON: {"scope": a 2-4 sentence scope of work paragraph, "clarifications": array of 4-7 short lines, "exclusions": array of 6-9 short lines}. Base it on the takeoff; do not mention prices or hourly rates.`, { modelTier: "default" });
     commit(); const q = P().quote; if (j.scope) q.scope = String(j.scope); if (Array.isArray(j.clarifications)) q.clar = j.clarifications.join("\n"); if (Array.isArray(j.exclusions)) q.excl = j.exclusions.join("\n"); changed(); toast("Scope, clarifications and exclusions drafted. Edit them as needed.");
   } catch (e) { toast(aiErr(e)); if (btn) { btn.disabled = false; btn.textContent = "Draft scope with AI"; } }
 }
@@ -1498,14 +1752,15 @@ function editItem(id) {
    <label class="field"><span>Colour</span><select class="inp" id="eCol">${COLORS.map(c => `<option value="${c}" ${c === it.color ? "selected" : ""} style="color:${c}">■ ${c}</option>`).join("")}</select></label></div>
    <div class="grid2"><label class="field"><span>Unit price $ (per ${unitOf(it)})</span><input class="inp" id="ePrice" type="number" step="0.01" min="0" value="${it.price ?? ""}" placeholder="optional"></label>
    <label class="field"><span>Labour hours per ${unitOf(it)}</span><input class="inp" id="eLab" type="number" step="0.01" min="0" value="${it.labour ?? ""}" placeholder="e.g. 0.5"></label></div>
-   ${it.kind === "length" ? `<label class="field"><span>Waste / extra %</span><input class="inp" id="eWaste" type="number" step="1" min="0" value="${it.waste ?? 10}"></label>` :
+   ${it.kind !== "count" ? `<label class="field"><span>Waste / extra %</span><input class="inp" id="eWaste" type="number" step="1" min="0" value="${it.waste ?? 10}"></label>` :
       `<label class="field"><span>Sensitivity — ${it.sens ?? 6} of 10 (higher finds more)</span><input type="range" id="eSens" min="1" max="10" value="${it.sens ?? 6}"></label>
    <div class="row"><label class="row" style="gap:6px"><input type="checkbox" id="eRot" ${it.rotate !== false ? "checked" : ""}> Find rotated symbols</label><label class="row" style="gap:6px"><input type="checkbox" id="eMir" ${it.mirror ? "checked" : ""}> Find mirrored</label><label class="row" style="gap:6px"><input type="checkbox" id="eMS" ${it.multiScale ? "checked" : ""}> Slightly different sizes</label></div>
    ${it.templates?.length ? `<div class="row">${it.templates.map(t => `<img src="${tplImg(t)}" style="width:48px;height:48px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px" alt="Symbol sample">`).join("")}<span class="muted" style="font-size:12px">Symbol samples used for counting</span></div>` : ""}`}
    <details ${it.asm?.length ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Materials in each ${esc(unitOf(it))} (assembly)</summary>
     <p class="muted" style="margin:6px 0;font-size:12.5px">List what one ${esc(it.name)} needs (box, device, plate, wire…). The quote prices it from these parts and Excel gets a full Material List.</p>
     <div id="asmRows" style="display:grid;gap:6px"></div>
-    <div class="row" style="margin-top:6px"><button class="btn sm" id="asmAdd" type="button">+ Add part</button>${ASM_STARTERS[it.cat] ? `<button class="btn sm" id="asmStart" type="button">Start from a typical ${esc(it.cat.toLowerCase())} assembly</button>` : ""}<span class="spacer"></span><span class="muted num" id="asmTot"></span></div></details>
+    <div class="row" style="margin-top:6px"><button class="btn sm" id="asmAdd" type="button">+ Add part</button>${asmStarter(it) ? `<button class="btn sm" id="asmStart" type="button">Start from a typical assembly</button>` : ""}<span class="spacer"></span><span class="muted num" id="asmTot"></span></div></details>
+   <label class="row" style="gap:6px"><input type="checkbox" id="eAlt" ${it.alt ? "checked" : ""}> Price as an alternate (shown separately, not in the base bid)</label>
    <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
    <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
@@ -1515,18 +1770,28 @@ function editItem(id) {
   $("#asmRows").oninput = (e) => { const el = e.target, k = Object.keys(el.dataset)[0], i = +el.dataset[k]; if (!asm[i]) return; ({ an: () => asm[i].n = el.value, aq: () => asm[i].q = el.value === "" ? 0 : +el.value, au: () => asm[i].u = el.value, ac: () => asm[i].c = el.value === "" ? "" : +el.value })[k]?.(); asmTot(); };
   $("#asmRows").onclick = (e) => { const b = e.target.closest("[data-adel]"); if (b) { asm.splice(+b.dataset.adel, 1); asmPaint(); } };
   $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
-  if ($("#asmStart")) $("#asmStart").onclick = () => { asm = ASM_STARTERS[it.cat].map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
+  if ($("#asmStart")) $("#asmStart").onclick = () => { asm = asmStarter(it).map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
   asmPaint();
-  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
   $("#eSave").onclick = save;
   if ($("#eSaveCount")) $("#eSaveCount").onclick = async () => { save(); const r = await countItem(it, P().pages); changed({ sheets: true }); reportCount(it, r); };
-  $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
+  $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); P().markups = P().markups.filter(m => m.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
 }
-function addManualItem() {
-  openDialog(`<div class="dlg-h"><h3>Add item by hand</h3></div><div class="dlg-b"><label class="field"><span>Name</span><input class="inp" id="mName" placeholder='e.g. 200A panel, 3/4" EMT run' autofocus></label>
-   <div class="grid2"><label class="field"><span>Category</span><select class="inp" id="mCat">${CATS.map(c => `<option>${c}</option>`).join("")}</select></label><label class="field"><span>Type</span><select class="inp" id="mKind"><option value="count">Counted on drawings (each)</option><option value="length">Run / length (traced)</option></select></label></div></div>
+function addManualItem(kindWanted) {
+  const pres = tr().presets.filter(x => !kindWanted || x[1] === kindWanted);
+  const kl = { count: "count", length: "run", area: "area" };
+  openDialog(`<div class="dlg-h"><h3>Add item</h3><span class="chip">${tr().icon} ${esc(tr().name)}</span></div><div class="dlg-b">
+   <div class="eyebrow">Common ${esc(tr().name.toLowerCase())} items (with materials ready to price)</div>
+   <div class="preset-grid">${pres.map((x, i) => `<button class="btn sm" data-pre="${tr().presets.indexOf(x)}" type="button">${esc(x[0])} <span class="muted" style="font-size:11px">${kl[x[1]]}</span></button>`).join("")}</div>
+   <div class="eyebrow" style="margin-top:6px">Or your own</div>
+   <label class="field"><span>Name</span><input class="inp" id="mName" placeholder='e.g. ${esc(tr().examples[0])}'></label>
+   <div class="grid2"><label class="field"><span>Category</span><select class="inp" id="mCat">${CATS.map(c => `<option>${c}</option>`).join("")}</select></label><label class="field"><span>Type</span><select class="inp" id="mKind"><option value="count">Counted on drawings (each)</option><option value="length">Run / length (traced)</option><option value="area">Area (measured)</option></select></label></div></div>
    <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mOk">Add</button></div>`);
-  $("#mOk").onclick = () => { const n = $("#mName").value.trim(); if (!n) return; commit(); const it = newItem({ name: n, cat: $("#mCat").value, kind: $("#mKind").value }); P().items.push(it); S.activeItem = it.id; if (it.kind === "length") { S.measureItem = it.id; setTool("measure"); } else setTool("count"); closeDialog(); changed(); };
+  if (kindWanted) $("#mKind").value = kindWanted;
+  const start = (it) => { P().items.push(it); S.activeItem = it.id; if (it.kind === "length") { S.measureItem = it.id; setTool("measure"); } else if (it.kind === "area") { S.areaItem = it.id; setTool("area"); } else setTool("count"); closeDialog(); changed();
+    toast(it.kind === "count" ? `Now drag a box around one ${it.name} on the drawing to count them all.` : it.kind === "length" ? `Click along the ${it.name} route on the drawing.` : `Click around the ${it.name} area on the drawing, double-click to finish.`); };
+  $$("[data-pre]").forEach(b => b.onclick = () => { const x = tr().presets[+b.dataset.pre]; commit(); const it = newItem({ name: x[0], kind: x[1], cat: x[2] }); if (!it.asm?.length && x[3]?.length) it.asm = x[3].map(([n, q, u]) => ({ n, q, u, c: "" })); start(it); });
+  $("#mOk").onclick = () => { const n = $("#mName").value.trim(); if (!n) return; commit(); const it = newItem({ name: n, cat: $("#mCat").value, kind: $("#mKind").value }); start(it); };
 }
 function editRun(id) {
   const r = P().runs.find(x => x.id === id); if (!r) return; const runs = P().items.filter(i => i.kind === "length");
@@ -1571,7 +1836,7 @@ async function openProjectById(id) {
   openProject(p);
 }
 async function openProject(p, { fresh = false } = {}) {
-  S.proj = p; p.markups ||= []; S.pageIdx = 0; S.activeItem = null; S.hidden = new Set(); S.scope = "all"; S.undo = []; S.redo = [];
+  S.proj = p; p.markups ||= []; p.trade ||= "electrical"; CATS = TRADES[p.trade].cats.slice(); S.areaItem = null; S.pageIdx = 0; S.activeItem = null; S.hidden = new Set(); S.scope = "all"; S.undo = []; S.redo = [];
   $("#home").hidden = true; $("#app").hidden = false; $("#pname").value = p.name;
   renderToolbar(); setTool(p.items.length ? "select" : "count"); sizeCanvas(); renderSheets(); switchTab("takeoff");
   setSave(p.sample ? "Practice — not saved" : (fresh ? "" : "Saved"));
@@ -1612,10 +1877,11 @@ const WEL_KEY = "tv-welcome-1";
 function seenWelcome() { try { return localStorage.getItem(WEL_KEY) === "1"; } catch (e) { return false; } }
 function markWelcome() { try { localStorage.setItem(WEL_KEY, "1"); } catch (e) { } }
 const WEL = [
-  { t: "Welcome to 20 Vision Electrical Take Off", b: "Count devices, measure conduit runs, mark up drawings and send a quote, all from one app. Built by a master electrician for electrical contractors and estimators.",
+  { t: "Welcome to 20 Vision Material Take Off", b: "Count items, measure runs and areas, mark up drawings and send a quote, all from one app. Built by a master electrician for every trade: electrical, plumbing, sprinklers, HVAC, drywall, concrete and finishes.",
     l: [["1", "Open your drawings", "PDF sets or photos of prints. Every sheet loads."], ["2", "Count and measure", "Box a symbol once and it's counted on every sheet."], ["3", "Quote and export", "Word, PDF and Excel, with your company details on it."]] },
   { t: "Your tools", b: "Everything sits on the toolbar over the drawing. You can always undo.",
-    l: [["#", "Count, Legend, Run, Area", "Takeoff tools. Scale sets the drawing scale."], ["✎", "Cloud, Text, Arrow, Box, Stamp", "Markup tools for RFIs and revisions."], ["$", "Takeoff, Quote, Ask AI tabs", "Your item list, pricing and an optional AI helper."]] },
+    l: [["#", "Count, Legend, Run, Circuit, Area", "Takeoff tools. Scale sets the drawing scale."], ["✎", "Cloud, Text, Arrow, Box, Stamp", "Markup tools for RFIs and revisions."], ["$", "Takeoff, Quote, Ask AI tabs", "Your item list, pricing and an optional AI helper."]] },
+  { t: "What's your trade?", b: "The app sets up item lists, symbols, materials and quote wording for your trade. You can change it any time from the Jobs screen.", trade: true },
   { t: "How do you want to start?", b: "You can come back to the tutorial any time with the ? button or the Tutorial button.", start: true },
 ];
 let welStep = 0;
@@ -1625,6 +1891,7 @@ function renderWelcome() {
   const w = WEL[welStep]; const last = welStep === WEL.length - 1;
   $("#welCard").innerHTML = `${welStep === 0 ? '<div class="wel-mark">20V</div>' : ""}<h2>${esc(w.t)}</h2><p>${esc(w.b)}</p>
     ${w.l ? `<ul class="wel-list">${w.l.map(([i, h, d]) => `<li><span class="wel-ico">${esc(i)}</span><span><b>${esc(h)}</b><span class="muted">${esc(d)}</span></span></li>`).join("")}</ul>` : ""}
+    ${w.trade ? `<div class="trade-grid">${TRADE_IDS.map(id => `<button class="trade-card ${id === TRADE ? "on" : ""}" data-wtrade="${id}" type="button"><span class="ic">${TRADES[id].icon}</span><b>${TRADES[id].name}</b><span class="muted" style="font-size:12px">${TRADES[id].examples.slice(0, 3).join(", ")}…</span></button>`).join("")}</div>` : ""}
     ${w.start ? `<div class="start-row" style="grid-template-columns:1fr">
       <button class="start-card" data-wel="tour"><span class="eyebrow">Recommended</span><b>Take the tutorial</b><span class="muted">About 3 minutes on a practice drawing. Nothing is saved.</span></button>
       <button class="start-card" data-wel="blank"><b>Start a blank job</b><span class="muted">An empty sheet to sketch, mark up and count on.</span></button>
@@ -1634,6 +1901,7 @@ function renderWelcome() {
   $("#welCard").querySelector(last ? "[data-wel=tour]" : "[data-wel=next]")?.focus();
 }
 document.addEventListener("click", (e) => {
+  const wt = e.target.closest("[data-wtrade]"); if (wt) { setTrade(wt.dataset.wtrade); welStep++; renderWelcome(); return; }
   const b = e.target.closest("[data-wel]"); if (!b) return; const a = b.dataset.wel;
   if (a === "next") { welStep++; renderWelcome(); } else if (a === "back") { welStep--; renderWelcome(); }
   else if (a === "home") hideWelcome(); else if (a === "tour") { hideWelcome(); startTour(); } else if (a === "blank") { hideWelcome(); startBlankJob(); }
@@ -1643,7 +1911,7 @@ document.addEventListener("click", (e) => {
 const narrow = () => matchMedia("(max-width:860px)").matches;
 function panel(which) { if (!narrow()) return; $("#rail").classList.toggle("open", which === "rail"); $("#side").classList.toggle("open", which === "side"); }
 const TOUR = [
-  { t: "This is a practice drawing", b: "A sample lighting and power plan. Try anything you like here; nothing is saved. The tutorial walks you through each part of the screen.", sel: null },
+  { t: "This is a practice drawing", b: "A sample electrical plan (your own trade works the same way). Try anything you like here; nothing is saved. The tutorial walks you through each part of the screen.", sel: null },
   { t: "Sheets", b: "Every sheet in your drawing set is listed here. Tap one to open it. Use + Add to bring in more PDFs, photos of prints, or addenda later.", sel: "#rail", go: () => panel("rail") },
   { t: "The toolbar", b: "All your tools live here, over the drawing. Each one has a keyboard letter on a computer, like C for Count.", sel: "#toolbar", go: () => panel(null) },
   { t: "Step 1: Set the scale", b: "Pick the scale from the bar that appears, or tap Scale and click two ends of a known dimension. Do this once per sheet so runs and areas measure right.", sel: '[data-tool="scale"]', go: () => { panel(null); setTool("scale"); } },
@@ -1792,7 +2060,7 @@ async function saveFile(name, blob) {
 }
 function takeoffRows() {
   const all = new Set(P().pages.map(g => g.id));
-  return CATS.flatMap(cat => P().items.filter(i => i.cat === cat).map(it => { const q = qtyOf(it, all); const qq = it.kind === "length" ? Math.ceil(q) : q; const pr = priceOf(it); return { cat, it, q: qq, unit: unitOf(it), price: pr, ext: pr != null ? qq * pr : null, lab: it.labour, hrs: it.labour != null ? qq * it.labour : null }; })).filter(r => r.q > 0);
+  return catsAll(P().items).flatMap(cat => P().items.filter(i => i.cat === cat).map(it => { const q = qtyOf(it, all); const qq = it.kind !== "count" ? Math.ceil(q) : q; const pr = priceOf(it); return { cat, it, q: qq, unit: unitOf(it), price: pr, ext: pr != null ? qq * pr : null, lab: it.labour, hrs: it.labour != null ? qq * it.labour : null }; })).filter(r => r.q > 0);
 }
 /* --- XLSX --- */
 async function buildXlsx(sheets) {
@@ -1815,13 +2083,17 @@ async function exportXlsx() {
   for (const r of rows) s1.push([r.cat, r.it.name, r.q, r.unit, r.price != null ? { v: r.price, s: "money" } : "", r.ext != null ? { v: r.ext, s: "money" } : "", r.lab ?? "", r.hrs != null ? { v: Math.round(r.hrs * 100) / 100, s: "dec" } : ""]);
   s1.push([], [{ v: "Material total", s: "b" }, "", "", "", "", { v: t.mat, s: "bmoney" }, "", { v: Math.round(t.hrs * 100) / 100, s: "dec" }]);
   const s2 = [H(["Sheet", "Drawing set", "Item", "Qty", "Unit"])];
-  for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) s2.push([g.name, docOf(g).set, it.name, it.kind === "length" ? Math.ceil(q) : q, unitOf(it)]); }
+  for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) s2.push([g.name, docOf(g).set, it.name, it.kind !== "count" ? Math.ceil(q) : q, unitOf(it)]); }
   const s3 = [H(["Sheet", "Run type", "Traced length", "Bends", "Drops", "Total with waste & drops", "Unit"])];
   for (const r of p.runs) { const g = p.pages.find(x => x.id === r.page), it = itemOf(r.item), u = p.units === "m" ? 1 : M_PER_FT; const tl = realLen(r.pts, g), tt = runLen(r, g); s3.push([g?.name, (it?.name || "") + (r.circuit ? " (" + r.circuit + ")" : ""), tl != null ? +(tl / u).toFixed(1) : "no scale", bends(r.pts), r.drops || 0, tt != null ? +(tt / u).toFixed(1) : "", p.units]); }
   const mats = {}; for (const r of rows) for (const m of r.it.asm || []) { const k = (m.n || "") + "|" + (m.u || ""); const e = mats[k] ||= { n: m.n, u: m.u, q: 0, c: m.c }; e.q += (+m.q || 0) * r.q; }
   const s4 = [H(["Material", "Qty", "Unit", "Unit cost", "Extended"])]; for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) { const q = Math.ceil(e.q * 100) / 100; s4.push([e.n, q, e.u || "", e.c !== "" && e.c != null ? { v: +e.c, s: "money" } : "", e.c !== "" && e.c != null ? { v: q * e.c, s: "money" } : ""]); }
   const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
   if (s4.length > 1) sheets.splice(1, 0, { name: "Material List", cols: [36, 10, 7, 12, 13], rows: s4 });
+  const bs = [H(["Bid summary", "Amount"])]; const add = (k, v) => bs.push([k, { v: Math.round(v * 100) / 100, s: "money" }]);
+  add("Materials (with markup)", t.matM); add("Labour (" + fmt(t.hrs, 1) + " h)", t.lab); if (t.other) add(p.quote.otherLbl || "Other", t.other); if (t.cont) add("Contingency", t.cont); if (t.oh) add("Overhead", t.oh); if (t.pf) add("Profit", t.pf); if (t.bond) add("Bond", t.bond); add("Subtotal", t.sub); add((CO.taxName || "Tax") + " " + CO.hst + "%", t.tax); bs.push([{ v: "TOTAL", s: "b" }, { v: Math.round(t.total * 100) / 100, s: "bmoney" }]);
+  for (const a of t.alts) add("Alternate: " + a.it.name, a.sell);
+  sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
   const blob = await buildXlsx(sheets);
   saveFile(slug(p.name) + "-takeoff.xlsx", blob);
 }
@@ -1847,14 +2119,14 @@ function quoteModel() {
   const p = P(), q = p.quote, t = totals(), rows = takeoffRows();
   const sets = [...new Set(p.docs.map(d => d.set))];
   return {
-    head: [CO.company, [CO.contact, CO.phone, CO.email].filter(Boolean).join("  ·  "), [CO.address, CO.licence ? "ECRA/ESA Licence " + CO.licence : ""].filter(Boolean).join("  ·  ")],
+    head: [CO.company, [CO.contact, CO.phone, CO.email].filter(Boolean).join("  ·  "), [CO.address, CO.licence ? "Licence " + CO.licence : ""].filter(Boolean).join("  ·  ")],
     info: [["Quotation no.", q.quoteNo || ""], ["Date", q.date || ""], ["Client", q.client || ""], ["Attention", q.attn || ""], ["Project / site", q.site || p.name], ["Valid for", (q.valid || 30) + " days"]],
     basis: p.docs.map(d => `${d.name} (${d.set}) — ${p.pages.filter(g => g.docId === d.id).map(g => g.name).join(", ")}`),
     addenda: sets.filter(s => /addend/i.test(s)),
-    scope: q.scope, clar: (q.clar || "").split("\n").filter(s => s.trim()), excl: (q.excl || "").split("\n").filter(s => s.trim()), pay: q.pay,
-    labour: q.labourMode === "crew" ? `Crew of ${q.crew} electrician${q.crew == 1 ? "" : "s"} for approximately ${q.days} working day${q.days == 1 ? "" : "s"}.` : `Approximately ${fmt(t.hrs, 0)} labour hours, scheduled with the general contractor.`,
+    scope: q.scope, clar: (q.clar || "").split("\n").filter(s => s.trim()).concat(t.alts.map(a => `Alternate: ${a.it.name} (${fmt(a.qty)} ${a.unit}) — add ${money(a.sell)} plus ${CO.taxName}.`)), excl: (q.excl || "").split("\n").filter(s => s.trim()), pay: q.pay,
+    labour: q.labourMode === "crew" ? `Crew of ${q.crew} ${q.crew == 1 ? "worker" : "workers"} for approximately ${q.days} working day${q.days == 1 ? "" : "s"}.` : `Approximately ${fmt(t.hrs, 0)} labour hours, scheduled with the general contractor.`,
     mats: rows.map(r => [r.cat, r.it.name, fmt(r.q) + " " + r.unit].concat(q.showUnitPrices ? [r.price != null ? money(r.price) : "", r.ext != null ? money(r.ext) : ""] : [])),
-    price: [["Materials", money(t.matM)], ["Labour", money(t.lab)], ...(t.other ? [[q.otherLbl || "Other", money(t.other)]] : []), ["Subtotal", money(t.sub)], [`${CO.taxName} (${CO.hst}%)`, money(t.tax)], ["TOTAL", money(t.total)]],
+    price: [["Materials", money(t.matM * t.k)], ["Labour", money(t.lab * t.k)], ...(t.other ? [[q.otherLbl || "Other", money(t.other * t.k)]] : []), ["Subtotal", money(t.sub)], [`${CO.taxName} (${CO.hst}%)`, money(t.tax)], ["TOTAL", money(t.total)]],
     showUnit: q.showUnitPrices, name: p.name,
   };
 }
@@ -1932,7 +2204,7 @@ async function exportTakeoffPdf() {
   w.text(CO.company, { bold: true, size: 18, color: w.blue, after: 0 }); w.text("Itemized material takeoff - " + p.name, { bold: true, size: 12, after: 2 }); w.text("Prepared " + new Date().toLocaleDateString("en-CA") + " - " + p.pages.length + " sheets", { size: 9, color: w.grey, after: 10 });
   w.table([["Category", "Item", "Qty", "Unit", "Unit price", "Extended", "Labour h"], ...rows.map(r => [r.cat, r.it.name, fmt(r.q), r.unit, r.price != null ? money(r.price) : "", r.ext != null ? money(r.ext) : "", r.hrs != null ? fmt(r.hrs, 1) : ""]), ["", "Totals", "", "", "", money(t.mat), fmt(t.hrs, 1)]], [1500, 3200, 700, 600, 1100, 1300, 900], { head: true, right: [2, 4, 5, 6], boldLast: true });
   w.heading("Quantities by sheet");
-  const bs = [["Sheet", "Item", "Qty"]]; for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) bs.push([g.name, it.name, fmt(it.kind === "length" ? Math.ceil(q) : q) + " " + unitOf(it)]); }
+  const bs = [["Sheet", "Item", "Qty"]]; for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) bs.push([g.name, it.name, fmt(it.kind !== "count" ? Math.ceil(q) : q) + " " + unitOf(it)]); }
   w.table(bs, [2500, 5500, 2000], { head: true, right: [2] });
   saveFile(slug(p.name) + "-takeoff.pdf", await w.save());
 }
@@ -1953,8 +2225,8 @@ async function exportMarkedPdf() {
     const img = await doc.embedJpg(await (await toBlob(c, "image/jpeg", .85)).arrayBuffer());
     const pw = g.w, ph = g.h + 26 + Math.ceil(counts.length / 4) * 14; const pp = doc.addPage([pw, ph]);
     pp.drawImage(img, { x: 0, y: ph - g.h, width: g.w, height: g.h });
-    pp.drawText(ascii(`${g.name} - ${P().name} - 20 Vision Electrical Take Off`), { x: 12, y: ph - g.h - 16, size: 9, font: F, color: rgb(.08, .33, .82) });
-    counts.forEach(([it, q], j) => { const col = parseInt(it.color.slice(1), 16); const x = 12 + (j % 4) * (pw - 24) / 4, y = ph - g.h - 30 - Math.floor(j / 4) * 14; pp.drawCircle({ x: x + 4, y: y + 3, size: 4, color: rgb((col >> 16 & 255) / 255, (col >> 8 & 255) / 255, (col & 255) / 255) }); pp.drawText(ascii(`${it.name}: ${fmt(it.kind === "length" ? Math.ceil(q) : q)} ${unitOf(it)}`).slice(0, 48), { x: x + 12, y, size: 8, font: F, color: rgb(.1, .12, .2) }); });
+    pp.drawText(ascii(`${g.name} - ${P().name} - 20 Vision Material Take Off`), { x: 12, y: ph - g.h - 16, size: 9, font: F, color: rgb(.08, .33, .82) });
+    counts.forEach(([it, q], j) => { const col = parseInt(it.color.slice(1), 16); const x = 12 + (j % 4) * (pw - 24) / 4, y = ph - g.h - 30 - Math.floor(j / 4) * 14; pp.drawCircle({ x: x + 4, y: y + 3, size: 4, color: rgb((col >> 16 & 255) / 255, (col >> 8 & 255) / 255, (col & 255) / 255) }); pp.drawText(ascii(`${it.name}: ${fmt(it.kind !== "count" ? Math.ceil(q) : q)} ${unitOf(it)}`).slice(0, 48), { x: x + 12, y, size: 8, font: F, color: rgb(.1, .12, .2) }); });
     await sleep(5);
   }
   busy(false);
@@ -1966,6 +2238,7 @@ function exportMenu(btn) {
   m.style.top = r.bottom + 6 + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
   m.innerHTML = `<div class="grp">Quote</div><button data-x="qdocx">Quote <small>Word .docx</small></button><button data-x="qpdf">Quote <small>PDF</small></button>
    <div class="grp">Itemized takeoff</div><button data-x="txlsx">Takeoff <small>Excel .xlsx</small></button><button data-x="tdocx">Takeoff <small>Word .docx</small></button><button data-x="tpdf">Takeoff <small>PDF</small></button>
+   <div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}
    <div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>`;
   document.body.appendChild(m);
   m.onclick = async (e) => { const b = e.target.closest("[data-x]"); if (!b) return; closeMenu(); await runExport(b.dataset.x); };
@@ -1975,8 +2248,9 @@ function closeMenu() { $("#menu")?.remove(); }
 async function runExport(x) {
   try {
     if (!P().items.length && x !== "mpdf") return toast("Count something first — the export is built from your takeoff.");
+    if (x === "coxlsx" && !P().baseline) return toast("Lock the bid first in the Quote tab.");
     if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
-    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf }[x];
+    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder }[x];
     await f();
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
 }
@@ -1984,7 +2258,7 @@ async function runExport(x) {
 /* ------------------------- Settings ------------------------- */
 function openSettings() {
   const f = (k, l) => `<label class="field"><span>${l}</span><input class="inp" data-co="${k}" value="${esc(CO[k] ?? "")}"></label>`;
-  openDialog(`<div class="dlg-h"><h3>Company details</h3></div><div class="dlg-b"><p class="muted" style="margin:0">These print on every quote and export.</p>${f("company", "Company name")}${f("contact", "Contact name and title")}<div class="grid2">${f("phone", "Phone")}${f("email", "Email")}</div>${f("address", "Address")}<div class="grid2">${f("licence", "ECRA/ESA licence no.")}${f("taxName", "Tax name")}</div>${f("hst", "Tax rate %")}</div>
+  openDialog(`<div class="dlg-h"><h3>Company details</h3></div><div class="dlg-b"><p class="muted" style="margin:0">These print on every quote and export.</p>${f("company", "Company name")}${f("contact", "Contact name and title")}<div class="grid2">${f("phone", "Phone")}${f("email", "Email")}</div>${f("address", "Address")}<div class="grid2">${f("licence", "Licence no. (e.g. ECRA/ESA, TSSA, trade licence)")}${f("taxName", "Tax name")}</div>${f("hst", "Tax rate %")}</div>
    <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="coSave">Save</button></div>`);
   $("#coSave").onclick = async () => { $$("[data-co]").forEach(i => CO[i.dataset.co] = i.dataset.co === "hst" ? +i.value || 0 : i.value); await IDB.put("kv", "company", CO); Cloud.putSettings({ company: CO }); closeDialog(); renderSide(); toast("Company details saved."); };
 }
@@ -1994,7 +2268,7 @@ function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("o
 let spaceDown = false;
 function bind() {
   window.addEventListener("resize", sizeCanvas);
-  $("#btnPB").onclick = openPriceBook; $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
+  $("#btnPB").onclick = openPriceBook; $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
   $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -2016,6 +2290,7 @@ function bind() {
     if (e.target.id === "unitsSel") { P().units = e.target.value; P().items.forEach(i => { if (i.kind === "length") i.unit = P().units; }); changed(); }
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
     if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
+    if (e.target.id === "areaSel") { if (e.target.value === "__newA") { addManualItem("area"); } else S.areaItem = e.target.value || null; }
   };
   $("#subbar").onclick = (e) => {
     const c = e.target.closest("[data-mcol]"); if (c) { S.markStyle.color = c.dataset.mcol; renderSubbar(); }
@@ -2038,18 +2313,19 @@ function bind() {
     if (t("edit")) return editItem(t("edit").dataset.edit);
     if (t("review")) return reviewMaybes(itemOf(t("review").dataset.review));
     if (t("mball")) return resolveAllMaybes(t("mball").dataset.mball === "yes");
-    if (e.target.id === "addManual") return addManualItem();
-    const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure") setTool("measure"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
+    if (e.target.id === "addManual" || e.target.id === "addPreset") return addManualItem();
+    const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure" && S.tool !== "circuit") setTool("measure"); else renderSubbar(); } else if (it.kind === "area") { S.areaItem = id; if (S.tool !== "area") setTool("area"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
   };
   $("#pane-takeoff").ondblclick = (e) => { const r = e.target.closest("[data-item]"); if (r) editItem(r.dataset.item); };
-  $("#pane-takeoff").onchange = (e) => { if (e.target.id === "scopeSel") { S.scope = e.target.value; renderTakeoff(); } };
+  $("#pane-takeoff").onchange = (e) => { if (e.target.id === "scopeSel") { S.scope = e.target.value; renderTakeoff(); }
+    if (e.target.id === "jobTrade") { const t = e.target.value; commit(); const old = TRADES[P().trade]; P().trade = t; CATS = TRADES[t].cats.slice(); if (P().quote.scope === old.scope) P().quote.scope = TRADES[t].scope; if (P().quote.excl === old.excl) P().quote.excl = TRADES[t].excl; changed(); toast("This job is now " + TRADES[t].name + "."); } };
   $("#pane-markups").onclick = (e) => {
     const d = e.target.closest("[data-delmk]"); if (d) { commit(); P().markups = P().markups.filter(m => m.id !== d.dataset.delmk); changed(); return; }
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
   $("#pane-quote").addEventListener("change", (e) => { const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });

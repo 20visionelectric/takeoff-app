@@ -1,5 +1,5 @@
 {
-  "name": "20 Vision Electrical Take Off",
+  "name": "20 Vision Material Take Off",
   "short_name": "20V Take Off",
   "id": "/",
   "start_url": "/",
@@ -7,7 +7,7 @@
   "display": "standalone",
   "background_color": "#EEF2F7",
   "theme_color": "#1554D1",
-  "description": "Electrical takeoff, markup and quoting for electrical contractors.",
+  "description": "Material takeoff, markup and quoting for every trade.",
   "icons": [
     {
       "src": "icons/icon-192.png",
