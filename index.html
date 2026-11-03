@@ -263,6 +263,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
       </div>
       <div class="row">
         <button class="btn" id="btnSettings">Company details</button>
+        <button class="btn" id="btnPB">Price book</button>
         <button class="btn" id="btnTutorial">Tutorial</button>
       </div>
     </div>
@@ -393,6 +394,7 @@ const ICON = {
   count: '<circle cx="12" cy="12" r="8"/><path d="M8.5 12.5l2.3 2.3 4.7-5"/>',
   legend: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="7.5" cy="9" r="1.5"/><circle cx="7.5" cy="15" r="1.5"/><path d="M11 9h6M11 15h6"/>',
   measure: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
+  circuit: '<rect x="3" y="3" width="6" height="8" rx="1"/><path d="M9 7h6v10h4"/><circle cx="15" cy="7" r="1.6"/><circle cx="19" cy="17" r="1.6"/>',
   area: '<path d="M4 7l6-3 10 5-3 11-11-2z"/>',
   scale: '<path d="M3 12h18M3 9v6M21 9v6M8 11v2M13 11v2M18 11v2"/>',
   cloud: '<path d="M6 17a4 4 0 01-.5-8 5 5 0 019.6-1.5A4 4 0 0118 17z"/>',
@@ -417,7 +419,7 @@ const S = {
   hidden: new Set(), scope: "all", tab: "takeoff", ai: null, aiImages: false, chat: [],
   compare: null, markStyle: { color: "#E5484D", stamp: "REVISED" }, measureItem: null,
 };
-const DEFAULT_CO = { company: "20 Vision Electric Inc.", contact: "Shamar Hamilton, Master Electrician", phone: "647-514-3532", email: "info@20visionelectric.com", address: "Greater Toronto Area, Ontario", licence: "", hst: 13, taxName: "HST" };
+const DEFAULT_CO = { company: "", contact: "", phone: "", email: "", address: "", licence: "", hst: 13, taxName: "HST" };
 let CO = { ...DEFAULT_CO };
 
 /* ------------------------- Storage ------------------------- */
@@ -790,7 +792,7 @@ function drawNow() {
     g.beginPath(); r.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.stroke(); g.globalAlpha = 1;
     for (const p of r.pts) { g.fillStyle = "#fff"; g.beginPath(); g.arc(p[0], p[1], 3.5 * px, 0, 7); g.fill(); g.strokeStyle = it.color; g.lineWidth = 1.5 * px; g.stroke(); }
     const mid = r.pts[Math.floor((r.pts.length - 1) / 2)], nx = r.pts[Math.floor((r.pts.length - 1) / 2) + 1] || mid;
-    label(g, (mid[0] + nx[0]) / 2, (mid[1] + nx[1]) / 2, lenTxt(runLen(r, pg)), it.color, px);
+    label(g, (mid[0] + nx[0]) / 2, (mid[1] + nx[1]) / 2, (r.circuit ? r.circuit + " · " : "") + lenTxt(runLen(r, pg)), it.color, px);
   }
   // marks
   const R = 7 * px;
@@ -827,7 +829,7 @@ function drawMarkup(g, mk, px, sel) {
   else if (mk.type === "arrow") { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); const a = Math.atan2(y2 - y1, x2 - x1), L = 14 * px; g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - L * Math.cos(a - .45), y2 - L * Math.sin(a - .45)); g.lineTo(x2 - L * Math.cos(a + .45), y2 - L * Math.sin(a + .45)); g.closePath(); g.fill(); }
   else if (mk.type === "text") { const fs = (mk.fs || 14) * px; g.font = `600 ${fs}px "IBM Plex Sans", sans-serif`; g.textBaseline = "top"; const lines = String(mk.text || "").split("\n"); const tw = Math.max(...lines.map(l => g.measureText(l).width)) + 10 * px; g.fillStyle = "rgba(255,255,255,.92)"; g.fillRect(x1, y1, tw, lines.length * fs * 1.25 + 8 * px); g.strokeRect(x1, y1, tw, lines.length * fs * 1.25 + 8 * px); g.fillStyle = mk.color; lines.forEach((l, i) => g.fillText(l, x1 + 5 * px, y1 + 4 * px + i * fs * 1.25)); }
   else if (mk.type === "stamp") { const fs = 22 * px; g.font = `700 ${fs}px "Barlow Condensed", sans-serif`; const t = (mk.text || "REVISED").toUpperCase(); const tw = g.measureText(t).width + 20 * px; g.save(); g.translate(x1, y1); g.rotate(-0.12); g.lineWidth = 3 * px; g.strokeRect(0, 0, tw, fs + 12 * px); g.textBaseline = "top"; g.fillText(t, 10 * px, 7 * px); g.font = `500 ${10 * px}px "IBM Plex Mono", monospace`; g.fillText(new Date(mk.at || Date.now()).toISOString().slice(0, 10), 10 * px, fs + 15 * px); g.restore(); }
-  else if (mk.type === "area" && mk.pts) { g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], areaTxt(polyArea(mk.pts), page()), mk.color, px); }
+  else if (mk.type === "area" && mk.pts) { g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
   if (sel) { g.setLineDash([4 * px, 3 * px]); g.strokeStyle = "#13203A"; g.lineWidth = 1 * px; const b = markupBounds(mk); g.strokeRect(b[0] - 4 * px, b[1] - 4 * px, b[2] + 8 * px, b[3] + 8 * px); g.setLineDash([]); }
   g.restore();
 }
@@ -928,7 +930,7 @@ async function guessScale(pp) {
 
 /* ------------------------- Tools ------------------------- */
 const TOOLS = [
-  ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["area", "Area", "A"], ["scale", "Scale", "S"], "|",
+  ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["circuit", "Circuit", "U"], ["area", "Area", "A"], ["scale", "Scale", "S"], "|",
   ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], "|", ["exclude", "Ignore", "X"],
 ];
 function renderToolbar() {
@@ -945,6 +947,7 @@ function updHint() {
     count: ai && ai.kind === "count" ? `Click to add a <b>${esc(ai.name)}</b> by hand. Click a tick to remove it. <b>Drag a box</b> around a new symbol to count it everywhere.` : `<b>Drag a box</b> tightly around one symbol. It gets named and counted on every sheet.`,
     legend: `<b>Drag a box around the legend.</b> Every symbol in it is read, named and counted.`,
     measure: `Click along the conduit or cable route. <b>Double-click</b> or Enter to finish, Esc to cancel.` + noScale,
+    circuit: `<b>Click the panel</b>, then click each device on the circuit (clicks snap to counted ticks). <b>Double-click</b> or Enter to finish. The wire is routed square to the walls, with a drop at every device.` + noScale,
     area: `Click the corners of the area. <b>Double-click</b> to finish.` + noScale,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
@@ -955,10 +958,10 @@ function updHint() {
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
-  if (S.tool === "measure") {
+  if (S.tool === "measure" || S.tool === "circuit") {
     const runs = P()?.items.filter(i => i.kind === "length") || [];
     if (!S.measureItem || !itemOf(S.measureItem)) S.measureItem = runs[0]?.id || null;
-    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>`;
+    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
   } else if (S.tool === "scale") {
     const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
@@ -991,7 +994,7 @@ function onMove(e) {
 }
 function onUp(e) {
   if (!ptr) return; const p = ptr; ptr = null;
-  const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, [x, y] = toPt(sx, sy);
+  const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top; let [x, y] = toPt(sx, sy);
   cv().style.cursor = S.tool === "pan" ? "grab" : S.tool === "select" ? "default" : "crosshair";
   if (p.panning) { if (!p.moved && S.tool === "select") { S.sel = null; renderSide(); draw(); } return; }
   if (p.moveMk) { if (p.moved) { const mk = itemMk(p.moveMk.id), now = JSON.stringify(mk); Object.assign(mk, JSON.parse(p.moveMk.orig)); commit(); Object.assign(mk, JSON.parse(now)); changed(); } return; }
@@ -1007,8 +1010,9 @@ function onUp(e) {
   }
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
-  if (["measure", "area", "scale"].includes(S.tool)) {
-    if (!S.draft) S.draft = { kind: S.tool, pts: [] };
+  if (["measure", "area", "scale", "circuit"].includes(S.tool)) {
+    if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
+    if (S.tool === "circuit") { const tol = 14 / S.zoom; let best = null, bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = m; } } if (best) { x = best.x; y = best.y; } S.draft.snaps.push(!!best); }
     const last = S.draft.pts[S.draft.pts.length - 1];
     if (last && Math.hypot(last[0] - x, last[1] - y) * S.zoom < 4) return; // dblclick second click
     let q = [x, y]; if (e.shiftKey && last) { if (Math.abs(x - last[0]) > Math.abs(y - last[1])) q = [x, last[1]]; else q = [last[0], y]; }
@@ -1024,6 +1028,15 @@ function finishDraft() {
     commit(); P().runs.push({ id: uid(), item: it.id, page: pg.id, pts: d.pts, drops: 0, dropLen: P().units === "m" ? 3 : 10 });
     S.draft = null; changed(); renderSubbar();
     if (!pg.scale) toast("Run saved. Set this sheet's scale to get its length.");
+  } else if (d.kind === "circuit" && d.pts.length >= 2) {
+    let it = itemOf(S.measureItem);
+    if (!it) { it = newItem({ name: "#12 wire (branch circuit)", kind: "length", cat: "Conduit & wire" }); P().items.push(it); S.measureItem = it.id; }
+    const sq = [d.pts[0]]; for (let i = 1; i < d.pts.length; i++) { const a = sq[sq.length - 1], b = d.pts[i]; if (Math.abs(a[0] - b[0]) > 0.5 && Math.abs(a[1] - b[1]) > 0.5) sq.push([b[0], a[1]]); sq.push(b); }
+    const devices = d.snaps.slice(1).filter(Boolean).length || d.pts.length - 1;
+    const n = P().runs.filter(r => r.circuit).length + 1;
+    commit(); P().runs.push({ id: uid(), item: it.id, page: pg.id, pts: sq, drops: devices, dropLen: S.dropLen ?? (P().units === "m" ? 3 : 10), circuit: "Circuit " + n, homerun: true });
+    S.draft = null; changed(); renderSubbar();
+    const L = runLen(P().runs[P().runs.length - 1], pg); toast(`Circuit ${n}: ${devices} device${devices === 1 ? "" : "s"}, ${L == null ? "set the sheet scale to get the length" : lenTxt(L) + " of wire including drops and waste"}.`);
   } else if (d.kind === "area" && d.pts.length >= 3) { commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: S.markStyle.color, at: Date.now() }); S.draft = null; changed(); }
   else { S.draft = null; draw(); }
 }
@@ -1077,9 +1090,41 @@ function placeText(x, y, sx, sy) {
 function closePop() { $("#pop")?.remove(); }
 
 /* ------------------------- New item from a symbol ------------------------- */
+/* ---- Price book (saved on this device, reused on every job) ---- */
+let PB = {};
+const pbKey = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function pbSave() { IDB.put("kv", "pricebook", PB); }
+function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); return true; }
+function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], at: Date.now() }; pbSave(); }
+const asmCost = (it) => (it.asm || []).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0);
+const priceOf = (it) => it.asm?.length && it.asm.some(m => m.c !== "" && m.c != null) ? asmCost(it) + (+it.extra || 0) : it.price;
+const ASM_STARTERS = {
+  "Receptacles": [["Device box", 1, "ea"], ["Receptacle device", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/2 or #12/2 wire", 15, "ft"], ["Connectors & screws", 1, "lot"]],
+  "Switches": [["Device box", 1, "ea"], ["Switch device", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/2 wire", 15, "ft"]],
+  "Lighting": [["Fixture", 1, "ea"], ["Fixture whip / connector", 1, "ea"], ["#14/2 wire", 12, "ft"], ["Hangers / support", 1, "lot"]],
+  "Fire alarm": [["Device", 1, "ea"], ["Back box", 1, "ea"], ["FA cable", 20, "ft"]],
+  "Data & comms": [["Low-voltage bracket", 1, "ea"], ["Jack & plate", 1, "ea"], ["Cat6 cable", 60, "ft"]],
+  "Conduit & wire": [["Conduit", 1, "ft"], ["Wire (3 conductors)", 3, "ft"], ["Couplings & connectors", 0.1, "ea"], ["Straps", 0.1, "ea"]],
+};
+function openPriceBook() {
+  const rows = Object.values(PB).sort((a, b) => a.name.localeCompare(b.name));
+  openDialog(`<div class="dlg-h"><h3>Price book</h3><span class="chip">${rows.length} items</span></div><div class="dlg-b">
+   <p class="muted" style="margin:0;line-height:1.5">Prices, labour and materials you save here fill in automatically on every new job when an item has the same name. Saved on this device.</p>
+   ${rows.length ? `<div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left"><th style="padding:6px 8px">Item</th><th style="padding:6px">Unit $</th><th style="padding:6px">Labour h</th><th style="padding:6px">Materials</th><th></th></tr></thead><tbody>
+   ${rows.map(r => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 8px">${esc(r.name)}</td><td style="padding:4px"><input class="inp num" style="width:86px" data-pbp="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.price ?? ""}"></td><td style="padding:4px"><input class="inp num" style="width:70px" data-pbl="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.labour ?? ""}"></td><td style="padding:6px" class="muted">${r.asm?.length ? r.asm.length + " parts" : "—"}</td><td style="padding:4px"><button class="btn ghost sm" data-pbdel="${esc(pbKey(r.name))}" title="Remove">${svgI("trash", 15)}</button></td></tr>`).join("")}
+   </tbody></table></div>` : `<div class="muted">Empty for now. Open any item on a job, set its price, labour or materials, and leave "Save to my price book" ticked.</div>`}
+   <div class="row"><button class="btn sm" id="pbExp">Export CSV</button><label class="btn sm" for="pbImp">Import CSV</label><input type="file" id="pbImp" accept=".csv,text/csv" hidden><span class="muted" style="font-size:12px">CSV columns: name, unit price, labour hours</span></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button><button class="btn primary" id="pbOk">Save</button></div>`);
+  $("#pbOk").onclick = () => { $$("[data-pbp]").forEach(i => { const e = PB[i.dataset.pbp]; if (e) e.price = i.value === "" ? null : +i.value; }); $$("[data-pbl]").forEach(i => { const e = PB[i.dataset.pbl]; if (e) e.labour = i.value === "" ? null : +i.value; }); pbSave(); closeDialog(); toast("Price book saved."); };
+  $$("[data-pbdel]").forEach(b => b.onclick = () => { delete PB[b.dataset.pbdel]; pbSave(); openPriceBook(); });
+  $("#pbExp").onclick = () => { const csv = "name,unit_price,labour_hours\n" + rows.map(r => [`"${String(r.name).replace(/"/g, '""')}"`, r.price ?? "", r.labour ?? ""].join(",")).join("\n"); saveFile("price-book.csv", new Blob([csv], { type: "text/csv" })); };
+  $("#pbImp").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const t = await f.text(); let n = 0;
+    for (const line of t.split(/\r?\n/).slice(1)) { const m = line.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*)),\s*([^,]*),\s*([^,]*)/); if (!m) continue; const name = (m[1] ?? m[2] ?? "").replace(/""/g, '"').trim(); if (!name) continue; const k = pbKey(name); PB[k] = { ...(PB[k] || { name, asm: [] }), name, price: m[3] === "" ? null : +m[3], labour: m[4] === "" ? null : +m[4], at: Date.now() }; n++; }
+    pbSave(); openPriceBook(); toast(n + " price book items imported."); };
+}
 function newItem(o) {
   const used = new Set(P().items.map(i => i.color)); const color = COLORS.find(c => !used.has(c)) || COLORS[P().items.length % COLORS.length];
-  return { id: "i" + uid(), name: o.name || "New item", kind: o.kind || "count", cat: o.cat || "Other", color, unit: o.kind === "length" ? (P().units === "m" ? "m" : "ft") : "ea", price: o.price ?? null, labour: o.labour ?? null, waste: o.kind === "length" ? 10 : 0, sens: 6, rotate: true, templates: o.templates || [], notes: "" };
+  const it = { id: "i" + uid(), name: o.name || "New item", kind: o.kind || "count", cat: o.cat || "Other", color, unit: o.kind === "length" ? (P().units === "m" ? "m" : "ft") : "ea", price: o.price ?? null, labour: o.labour ?? null, waste: o.kind === "length" ? 10 : 0, sens: 6, rotate: true, templates: o.templates || [], notes: "", asm: [] }; pbApply(it); return it;
 }
 async function captureTemplate(pg, bx, by, bw, bh) {
   const r = await renderPage(pg); const X = Math.round(bx * r.ppt), Y = Math.round(by * r.ppt), W = Math.round(bw * r.ppt), H = Math.round(bh * r.ppt);
@@ -1152,12 +1197,12 @@ async function cropsFor(list) {
 }
 async function reviewMaybes(it) {
   if (!liveMaybes(it).length) return toast("Nothing left to review for " + it.name);
-  busy(true, "Preparing review", it.maybes.length + " possible matches");
+  it.maybes.sort((a, b) => (b.s || 0) - (a.s || 0)); busy(true, "Preparing review", it.maybes.length + " possible matches");
   const crops = await cropsFor(it.maybes); busy(false);
   const state = crops.map(() => null);
   openDialog(`<div class="dlg-h"><h3>Possible ${esc(it.name)}</h3><span class="chip amber">${crops.length} to check</span></div>
    <div class="dlg-b"><div class="row"><img src="${tplImg(it.templates[0])}" style="width:56px;height:56px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px"><p style="margin:0;flex:1" class="muted">These look close to your symbol but weren't certain. Click each one that <b>is</b> a ${esc(it.name)}.${S.ai && S.aiImages ? " Or let AI decide." : ""}</p></div>
-   <div class="crops" id="crops">${crops.map((c, i) => `<div class="crop" data-i="${i}"><span class="n">${i + 1}</span><img src="${c.c.toDataURL()}" alt="Possible match ${i + 1}"></div>`).join("")}</div><div id="aiNote" class="muted" style="font-size:12.5px"></div></div>
+   <div class="crops" id="crops">${crops.map((c, i) => `<div class="crop" data-i="${i}"><span class="n">${i + 1} · ${Math.round((c.m.s || 0) * 100)}%</span><img src="${c.c.toDataURL()}" alt="Possible match ${i + 1}"></div>`).join("")}</div><div id="aiNote" class="muted" style="font-size:12.5px"></div></div>
    <div class="dlg-f">${S.ai && S.aiImages ? '<button class="btn" id="mbAI">Let AI decide</button>' : ""}<button class="btn" id="mbAll">Select all</button><button class="btn" id="mbNone">Ignore all</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="mbOk">Add selected</button></div>`);
   const paint = () => $$("#crops .crop").forEach((el, i) => { el.classList.toggle("yes", state[i] === true); el.classList.toggle("no", state[i] === false); });
   $("#crops").onclick = (e) => { const el = e.target.closest(".crop"); if (!el) return; const i = +el.dataset.i; state[i] = state[i] === true ? false : true; paint(); };
@@ -1286,7 +1331,7 @@ function qtyOf(it, pages = pagesInScope()) {
 const unitOf = (it) => it.kind === "length" ? (P().units === "m" ? "m" : "ft") : (it.unit || "ea");
 function totals() {
   const q = P().quote, all = new Set(P().pages.map(p => p.id));
-  const lines = P().items.map(it => { const qty = qtyOf(it, all); const qr = it.kind === "length" ? Math.ceil(qty) : qty; return { it, qty: qr, unit: unitOf(it), price: it.price, ext: it.price != null ? qr * it.price : null, hrs: it.labour != null ? qr * it.labour : null }; }).filter(l => l.qty > 0);
+  const lines = P().items.map(it => { const qty = qtyOf(it, all); const qr = it.kind === "length" ? Math.ceil(qty) : qty; const pr = priceOf(it); return { it, qty: qr, unit: unitOf(it), price: pr, ext: pr != null ? qr * pr : null, hrs: it.labour != null ? qr * it.labour : null }; }).filter(l => l.qty > 0);
   const mat = lines.reduce((a, l) => a + (l.ext || 0), 0), matM = mat * (1 + (+q.markup || 0) / 100);
   const hrs = q.labourMode === "crew" ? (+q.crew || 0) * (+q.days || 0) * (+q.hpd || 0) : lines.reduce((a, l) => a + (l.hrs || 0), 0);
   const lab = hrs * (+q.rate || 0), other = +q.other || 0, sub = matM + lab + other, tax = sub * (+CO.hst || 0) / 100;
@@ -1309,7 +1354,7 @@ function renderTakeoff() {
     const its = items.filter(i => i.cat === cat); if (!its.length) continue;
     h += `<div class="cat"><div class="cat-h"><b>${cat}</b></div>` + its.map(it => {
       const q = qtyOf(it, sc), hid = S.hidden.has(it.id);
-      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${it.price == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(it.price)}</span>`}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
+      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
        <span class="acts"><button data-eye="${it.id}" title="${hid ? "Show" : "Hide"} on drawing">${svgI(hid ? "eyeoff" : "eye", 16)}</button>${it.kind === "count" && it.templates?.length ? `<button data-recount="${it.id}" title="Recount on all sheets">${svgI("redo", 16)}</button>` : ""}<button data-edit="${it.id}" title="Edit item">${svgI("edit", 16)}</button></span></div>`;
     }).join("") + `</div>`;
   }
@@ -1329,7 +1374,7 @@ function renderMarkups() {
   const el = $("#pane-markups"), mks = P().markups;
   const nm = { cloud: "Revision cloud", text: "Text note", arrow: "Arrow", rect: "Box", highlight: "Highlight", stamp: "Stamp", area: "Area" };
   el.innerHTML = `<div class="row" style="justify-content:space-between"><b class="eyebrow">Markups list</b><span class="chip">${mks.length}</span></div>` +
-    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
+    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) + " · perimeter " + lenTxt(realLen([...mk.pts, mk.pts[0]], pg)) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
       : `<p class="muted" style="margin:0;line-height:1.55">Clouds, notes, arrows, boxes, highlights, stamps and areas you draw show up here. They print on the marked-up drawings export.</p>`) +
     `<div class="cat"><div class="cat-h"><b>Runs</b></div>${P().runs.length ? P().runs.map(r => { const it = itemOf(r.item), pg = P().pages.find(g => g.id === r.page); return `<div class="mk-row" data-run="${r.id}"><span class="dot" style="background:${it?.color}"></span><span><b style="font-weight:600">${esc(it?.name || "Run")}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted num" style="font-size:12px">${lenTxt(runLen(r, pg))} · ${bends(r.pts)} bends · ${r.drops || 0} drops</span></span><button class="btn ghost sm" data-editrun="${r.id}">Edit</button></div>`; }).join("") : `<p class="muted" style="margin:6px 0">No runs yet. Use <b>Run</b> to trace conduit or cable.</p>`}</div>`;
 }
@@ -1457,9 +1502,22 @@ function editItem(id) {
       `<label class="field"><span>Sensitivity — ${it.sens ?? 6} of 10 (higher finds more)</span><input type="range" id="eSens" min="1" max="10" value="${it.sens ?? 6}"></label>
    <div class="row"><label class="row" style="gap:6px"><input type="checkbox" id="eRot" ${it.rotate !== false ? "checked" : ""}> Find rotated symbols</label><label class="row" style="gap:6px"><input type="checkbox" id="eMir" ${it.mirror ? "checked" : ""}> Find mirrored</label><label class="row" style="gap:6px"><input type="checkbox" id="eMS" ${it.multiScale ? "checked" : ""}> Slightly different sizes</label></div>
    ${it.templates?.length ? `<div class="row">${it.templates.map(t => `<img src="${tplImg(t)}" style="width:48px;height:48px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px" alt="Symbol sample">`).join("")}<span class="muted" style="font-size:12px">Symbol samples used for counting</span></div>` : ""}`}
+   <details ${it.asm?.length ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Materials in each ${esc(unitOf(it))} (assembly)</summary>
+    <p class="muted" style="margin:6px 0;font-size:12.5px">List what one ${esc(it.name)} needs (box, device, plate, wire…). The quote prices it from these parts and Excel gets a full Material List.</p>
+    <div id="asmRows" style="display:grid;gap:6px"></div>
+    <div class="row" style="margin-top:6px"><button class="btn sm" id="asmAdd" type="button">+ Add part</button>${ASM_STARTERS[it.cat] ? `<button class="btn sm" id="asmStart" type="button">Start from a typical ${esc(it.cat.toLowerCase())} assembly</button>` : ""}<span class="spacer"></span><span class="muted num" id="asmTot"></span></div></details>
+   <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
    <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
-  const save = () => { commit(); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } closeDialog(); changed(); };
+  let asm = JSON.parse(JSON.stringify(it.asm || []));
+  const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
+  const asmTot = () => { const t = asm.reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0); $("#asmTot").textContent = asm.length ? "Parts cost per " + unitOf(it) + ": " + money(t) : ""; };
+  $("#asmRows").oninput = (e) => { const el = e.target, k = Object.keys(el.dataset)[0], i = +el.dataset[k]; if (!asm[i]) return; ({ an: () => asm[i].n = el.value, aq: () => asm[i].q = el.value === "" ? 0 : +el.value, au: () => asm[i].u = el.value, ac: () => asm[i].c = el.value === "" ? "" : +el.value })[k]?.(); asmTot(); };
+  $("#asmRows").onclick = (e) => { const b = e.target.closest("[data-adel]"); if (b) { asm.splice(+b.dataset.adel, 1); asmPaint(); } };
+  $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
+  if ($("#asmStart")) $("#asmStart").onclick = () => { asm = ASM_STARTERS[it.cat].map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
+  asmPaint();
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
   $("#eSave").onclick = save;
   if ($("#eSaveCount")) $("#eSaveCount").onclick = async () => { save(); const r = await countItem(it, P().pages); changed({ sheets: true }); reportCount(it, r); };
   $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
@@ -1592,6 +1650,7 @@ const TOUR = [
   { t: "Step 2: Read the legend", b: "Tap Legend and drag a box around the symbol legend on the drawing. Every symbol is named and counted on every sheet for you.", sel: '[data-tool="legend"]', go: () => { panel(null); setTool("legend"); } },
   { t: "Step 3: Count", b: "Tap Count, then drag a tight box around one symbol to count all of them. Tap empty space to add one by hand. Tap a tick to remove it.", sel: '[data-tool="count"]', go: () => { panel(null); setTool("count"); } },
   { t: "Step 4: Measure runs", b: "Tap Run and click along a conduit or cable route. Double-tap or press Enter to finish. Waste % is added in the item settings.", sel: '[data-tool="measure"]', go: () => { panel(null); setTool("measure"); } },
+  { t: "Circuits and homeruns", b: "Tap Circuit, click the panel, then click each device on the circuit. The wire is routed square to the walls with a drop at every device, and the length goes into your takeoff.", sel: '[data-tool="circuit"]', go: () => { panel(null); setTool("circuit"); } },
   { t: "Mark up the drawing", b: "Cloud, Text, Arrow, Box, Highlight and Stamp are for RFIs, changes and as-builts. They print on the marked-up PDF export.", sel: '[data-tool="cloud"]', go: () => { panel(null); setTool("cloud"); } },
   { t: "Ignore areas", b: "Box out title blocks, keys or details you don't want counted.", sel: '[data-tool="exclude"]', go: () => { panel(null); setTool("exclude"); } },
   { t: "Your takeoff list", b: "Every counted item and run, with totals. Tap an item to find it on the drawing. Use the pencil to set a price, labour hours or rename it.", sel: "#side", go: () => { panel("side"); switchTab("takeoff"); setTool("select"); } },
@@ -1733,7 +1792,7 @@ async function saveFile(name, blob) {
 }
 function takeoffRows() {
   const all = new Set(P().pages.map(g => g.id));
-  return CATS.flatMap(cat => P().items.filter(i => i.cat === cat).map(it => { const q = qtyOf(it, all); const qq = it.kind === "length" ? Math.ceil(q) : q; return { cat, it, q: qq, unit: unitOf(it), price: it.price, ext: it.price != null ? qq * it.price : null, lab: it.labour, hrs: it.labour != null ? qq * it.labour : null }; })).filter(r => r.q > 0);
+  return CATS.flatMap(cat => P().items.filter(i => i.cat === cat).map(it => { const q = qtyOf(it, all); const qq = it.kind === "length" ? Math.ceil(q) : q; const pr = priceOf(it); return { cat, it, q: qq, unit: unitOf(it), price: pr, ext: pr != null ? qq * pr : null, lab: it.labour, hrs: it.labour != null ? qq * it.labour : null }; })).filter(r => r.q > 0);
 }
 /* --- XLSX --- */
 async function buildXlsx(sheets) {
@@ -1758,8 +1817,12 @@ async function exportXlsx() {
   const s2 = [H(["Sheet", "Drawing set", "Item", "Qty", "Unit"])];
   for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) s2.push([g.name, docOf(g).set, it.name, it.kind === "length" ? Math.ceil(q) : q, unitOf(it)]); }
   const s3 = [H(["Sheet", "Run type", "Traced length", "Bends", "Drops", "Total with waste & drops", "Unit"])];
-  for (const r of p.runs) { const g = p.pages.find(x => x.id === r.page), it = itemOf(r.item), u = p.units === "m" ? 1 : M_PER_FT; const tl = realLen(r.pts, g), tt = runLen(r, g); s3.push([g?.name, it?.name, tl != null ? +(tl / u).toFixed(1) : "no scale", bends(r.pts), r.drops || 0, tt != null ? +(tt / u).toFixed(1) : "", p.units]); }
-  const blob = await buildXlsx([{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }]);
+  for (const r of p.runs) { const g = p.pages.find(x => x.id === r.page), it = itemOf(r.item), u = p.units === "m" ? 1 : M_PER_FT; const tl = realLen(r.pts, g), tt = runLen(r, g); s3.push([g?.name, (it?.name || "") + (r.circuit ? " (" + r.circuit + ")" : ""), tl != null ? +(tl / u).toFixed(1) : "no scale", bends(r.pts), r.drops || 0, tt != null ? +(tt / u).toFixed(1) : "", p.units]); }
+  const mats = {}; for (const r of rows) for (const m of r.it.asm || []) { const k = (m.n || "") + "|" + (m.u || ""); const e = mats[k] ||= { n: m.n, u: m.u, q: 0, c: m.c }; e.q += (+m.q || 0) * r.q; }
+  const s4 = [H(["Material", "Qty", "Unit", "Unit cost", "Extended"])]; for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) { const q = Math.ceil(e.q * 100) / 100; s4.push([e.n, q, e.u || "", e.c !== "" && e.c != null ? { v: +e.c, s: "money" } : "", e.c !== "" && e.c != null ? { v: q * e.c, s: "money" } : ""]); }
+  const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
+  if (s4.length > 1) sheets.splice(1, 0, { name: "Material List", cols: [36, 10, 7, 12, 13], rows: s4 });
+  const blob = await buildXlsx(sheets);
   saveFile(slug(p.name) + "-takeoff.xlsx", blob);
 }
 /* --- DOCX --- */
@@ -1912,6 +1975,7 @@ function closeMenu() { $("#menu")?.remove(); }
 async function runExport(x) {
   try {
     if (!P().items.length && x !== "mpdf") return toast("Count something first — the export is built from your takeoff.");
+    if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
     busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf }[x];
     await f();
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
@@ -1930,7 +1994,7 @@ function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("o
 let spaceDown = false;
 function bind() {
   window.addEventListener("resize", sizeCanvas);
-  $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
+  $("#btnPB").onclick = openPriceBook; $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
   $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -1951,6 +2015,7 @@ function bind() {
     if (e.target.id === "scaleSel" && e.target.value !== "") { commit(); const s = SCALES[+e.target.value]; page().scale = { m: s.m, label: s.label }; changed({ sheets: true }); updHint(); }
     if (e.target.id === "unitsSel") { P().units = e.target.value; P().items.forEach(i => { if (i.kind === "length") i.unit = P().units; }); changed(); }
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
+    if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
   };
   $("#subbar").onclick = (e) => {
     const c = e.target.closest("[data-mcol]"); if (c) { S.markStyle.color = c.dataset.mcol; renderSubbar(); }
@@ -2024,6 +2089,7 @@ function jumpToItem(id) { const pg = page(); if (!pg) return; const onPage = P()
 (async function boot() {
   bind(); renderToolbar();
   const co = await IDB.get("kv", "company"); if (co) CO = { ...DEFAULT_CO, ...co };
+  try { PB = (await IDB.get("kv", "pricebook")) || {}; } catch (e) { PB = {}; }
   Cloud.init().then(async () => { const s = await Cloud.getSettings(); if (s?.company) { CO = { ...DEFAULT_CO, ...s.company }; IDB.put("kv", "company", CO); } });
   await renderProjList();
   if (!seenWelcome()) showWelcome();
