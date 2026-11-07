@@ -716,9 +716,10 @@ function restoreState(js) {
   for (const g of o.pages) { const pg = p.pages.find(x => x.id === g.id); if (pg) { pg.scale = g.scale; pg.excl = g.excl; pg.name = g.name; } }
   if (S.activeItem && !itemOf(S.activeItem)) S.activeItem = null;
 }
-function commit() { S.undo.push(snapshotState()); if (S.undo.length > 80) S.undo.shift(); S.redo = []; }
-function undo() { if (!S.undo.length) return toast("Nothing to undo"); S.redo.push(snapshotState()); restoreState(S.undo.pop()); changed(); }
-function redo() { if (!S.redo.length) return; S.undo.push(snapshotState()); restoreState(S.redo.pop()); changed(); }
+function lockGuard() { if (S.proj?.locked) { S.draft = null; toast("This bid is locked, so nothing can change. Unlock it in the Quote tab to make changes."); try { draw(); } catch (e) { } throw new Error("bid-locked"); } }
+function commit() { lockGuard(); S.undo.push(snapshotState()); if (S.undo.length > 80) S.undo.shift(); S.redo = []; }
+function undo() { if (S.proj?.locked) return toast("This bid is locked. Unlock it in the Quote tab first."); if (!S.undo.length) return toast("Nothing to undo"); S.redo.push(snapshotState()); restoreState(S.undo.pop()); changed(); }
+function redo() { if (S.proj?.locked) return toast("This bid is locked. Unlock it in the Quote tab first."); if (!S.redo.length) return; S.undo.push(snapshotState()); restoreState(S.redo.pop()); changed(); }
 
 let saveTimer = null, saving = false, saveAgain = false;
 function changed(opts = {}) { draw(); renderSide(); if (opts.sheets) renderSheets(); markDirty(); }
@@ -733,7 +734,7 @@ async function saveNow() {
   setSave(cloudOk ? "Saved" : (Cloud.db ? "Saved on this computer (account save failed)" : "Saved on this computer"));
   saving = false; if (saveAgain) { saveAgain = false; saveNow(); }
 }
-function setSave(t) { const el = $("#saveState"); if (el) el.textContent = t; }
+function setSave(t) { const el = $("#saveState"); if (el) el.textContent = (S.proj?.locked ? "Locked bid · " : "") + t; }
 
 /* ------------------------- Files & rendering ------------------------- */
 async function getFileBytes(doc) {
@@ -1611,6 +1612,8 @@ function renderQuote() {
   const ta = (k, label, rows = 4) => `<label class="field"><span>${label}</span><textarea class="inp" data-q="${k}" rows="${rows}">${esc(q[k] ?? "")}</textarea></label>`;
   el.innerHTML = `<div class="sumbar" style="grid-template-columns:1fr 1fr"><div class="sum"><div class="k">Quote total</div><div class="v">${money(t.total)}</div></div><div class="sum"><div class="k">Labour hours</div><div class="v">${fmt(t.hrs, 1)}</div></div></div>
    ${t.unpriced ? `<div class="warnbox">${t.unpriced} item${t.unpriced > 1 ? "s have" : " has"} no unit price. Add prices with the pencil in the Takeoff list.</div>` : ""}
+   ${copiesHtml()}
+   <fieldset ${P().locked ? "disabled" : ""} style="display:contents">
    <div class="grid2">${f("client", "Client")}${f("attn", "Attention")}</div>${f("site", "Project / site address")}
    <div class="grid2">${f("quoteNo", "Quote no.")}${f("date", "Date", "date")}</div>
    ${ta("scope", "Scope of work", 4)}${ta("clar", "Clarifications (one per line)", 4)}${ta("excl", "Exclusions (one per line)", 5)}${ta("pay", "Payment terms", 2)}
@@ -1629,6 +1632,7 @@ function renderQuote() {
    <div class="eyebrow">Bid markups (internal, not shown to the client)</div>
    <div class="grid2">${f("contingency", "Contingency %", "number", 'step="0.5"')}${f("overhead", "Overhead %", "number", 'step="0.5"')}${f("profit", "Profit %", "number", 'step="0.5"')}${f("bond", "Bond %", "number", 'step="0.1"')}</div>
    <label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
+   </fieldset>
    <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour${labF(q) ? ` (incl. ${labF(q)}% difficulty and conditions)` : ""}</td><td class="r num">${money(t.lab)}</td></tr>${t.pkg ? `<tr><td>Supplier and sub quotes</td><td class="r num">${money(t.pkg)}</td></tr>` : ""}${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}${t.cont ? `<tr><td>Contingency</td><td class="r num">${money(t.cont)}</td></tr>` : ""}${t.oh ? `<tr><td>Overhead</td><td class="r num">${money(t.oh)}</td></tr>` : ""}${t.pf ? `<tr><td>Profit</td><td class="r num">${money(t.pf)}</td></tr>` : ""}${t.bond ? `<tr><td>Bond</td><td class="r num">${money(t.bond)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
    ${t.alts.length ? `<div class="eyebrow">Alternates (priced separately)</div><table class="t">${t.alts.map(a => `<tr><td>${esc(a.it.name)} <span class="muted">${fmt(a.qty)} ${a.unit}</span></td><td class="r num">add ${money(a.sell)}</td></tr>`).join("")}</table>` : ""}
    ${bidSummaryHtml(t)}
@@ -1706,6 +1710,63 @@ function lockBaseline() {
   p.baseline = { at: Date.now(), total: totals().total, q: {}, names: {}, units: {}, price: {}, lab: {} };
   for (const it of p.items) { p.baseline.q[it.id] = it.kind !== "count" ? Math.ceil(qtyOf(it, all)) : qtyOf(it, all); p.baseline.names[it.id] = it.name; p.baseline.units[it.id] = unitOf(it); p.baseline.price[it.id] = priceOf(it); p.baseline.lab[it.id] = it.labour; }
   changed(); toast("Bid locked. Changes to quantities now show as adds and omits in the Quote tab.");
+}
+/* ------------------------- Saved copies and lock ------------------------- */
+const tplKey = (t) => [t.page, t.x, t.y, t.w, t.h].join("|");
+// Symbol pictures are large, so copies keep only where each one came from; restore takes the picture back from the job.
+function bidData(p) { return JSON.stringify({ items: p.items.map(it => it.templates?.length ? { ...it, templates: it.templates.map(t => ({ ...t, g: undefined })) } : it), marks: p.marks, runs: p.runs, markups: p.markups, pages: p.pages.map(g => ({ id: g.id, scale: g.scale, excl: g.excl, name: g.name })), quote: p.quote, baseline: p.baseline || null }); }
+function saveBidCopy(name, onlyIfChanged) {
+  const p = P(); if (!p || p.sample && !p.keep) return null;
+  const d = bidData(p), list = p.copies ||= [];
+  if (onlyIfChanged && list[0] && list[0].d === d) return null;
+  list.unshift({ id: uid(), name: name || "Saved copy", at: Date.now(), total: totals().total, d });
+  if (list.length > 15) list.length = 15;
+  markDirty(); return list[0];
+}
+const dayStr = (t) => new Date(t).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" });
+function copiesHtml() {
+  const p = P(), list = p.copies || [], now = totals().total;
+  const lock = p.locked
+    ? `<div class="warnbox" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="flex:1;min-width:160px"><b>This bid is locked</b> (since ${dayStr(p.locked.at)}). Nothing in this job can change by accident. Unlock it to make changes.</span><button class="btn sm" id="bidUnlock" type="button">Unlock to edit</button></div>`
+    : "";
+  return `${lock}<details ${S.copiesOpen ? "open" : ""} id="copiesBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Saved copies of this bid (${list.length})</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">Save a copy when you send a bid. The copy never changes, even if prices or quantities change later, and you can bring it back at any time. A copy is also saved each time you export the quote.</p>
+   <div class="row"><button class="btn sm" id="copySave" type="button">Save a copy now</button>${p.locked ? "" : `<button class="btn sm" id="bidLock" type="button" title="Stops all edits until you unlock">Lock this bid</button>`}</div>
+   ${list.length ? `<table class="t"><tr><th style="text-align:left">Copy</th><th class="r">Total</th><th></th></tr>${list.map(c => { const d = now - (c.total || 0); return `<tr><td>${esc(c.name)}<div class="muted" style="font-size:11.5px">${new Date(c.at).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div></td><td class="r num" style="white-space:nowrap">${money(c.total || 0)}<div class="muted" style="font-size:11.5px">${Math.abs(d) < 0.005 ? "same as now" : "now " + (d > 0 ? "+" : "−") + money(Math.abs(d))}</div></td><td class="r" style="white-space:nowrap">${p.locked ? "" : `<button class="btn sm" data-copyrestore="${c.id}" type="button">Restore</button>`}<button class="btn ghost sm" data-copydel="${c.id}" type="button" title="Delete this copy" aria-label="Delete this copy">${svgI("trash", 15)}</button></td></tr>`; }).join("")}</table>` : ""}</details>`;
+}
+function askCopyName() {
+  const q = P().quote, def = "Sent" + (q.client ? " to " + q.client : "") + " · " + dayStr(Date.now());
+  openDialog(`<div class="dlg-h"><h3>Save a copy of this bid</h3></div><div class="dlg-b"><label class="field"><span>Name for this copy</span><input class="inp" id="cpName" value="${esc(def)}"></label><p class="muted" style="margin:0;font-size:12.5px">Saves every count, measurement, price and quote setting as they are right now.</p></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="cpOk">Save copy</button></div>`);
+  const go = () => { const n = $("#cpName").value.trim() || def; closeDialog(); const p = P(), list = p.copies ||= []; list.unshift({ id: uid(), name: n, at: Date.now(), total: totals().total, d: bidData(p) }); if (list.length > 15) list.length = 15; S.copiesOpen = true; markDirty(); renderQuote(); toast("Copy saved: " + n); };
+  $("#cpOk").onclick = go; $("#cpName").onkeydown = (e) => { if (e.key === "Enter") go(); }; $("#cpName").select();
+}
+function lockBid() {
+  const p = P(); if (p.locked) return;
+  if (!p.baseline) lockBaseline();
+  saveBidCopy("Locked · " + dayStr(Date.now()), true);
+  p.locked = { at: Date.now() }; S.copiesOpen = true; S.draft = null; markDirty(); renderQuote(); draw();
+  toast("Bid locked. Counts, measurements, prices and quote settings can't change until you unlock it.");
+}
+function unlockBid() { const p = P(); if (!p.locked) return; delete p.locked; markDirty(); renderQuote(); toast("Bid unlocked. You can edit again; your saved copies stay as they were."); }
+function restoreBidCopy(id) {
+  const p = P(), c = (p.copies || []).find(x => x.id === id); if (!c) return;
+  if (p.locked) return toast("Unlock the bid first, then restore the copy.");
+  openDialog(`<div class="dlg-h"><h3>Restore “${esc(c.name)}”?</h3></div><div class="dlg-b"><p style="margin:0">The job goes back to how it was on ${dayStr(c.at)} (total ${money(c.total || 0)}). Your drawings stay. What you have now is saved as a copy first, so nothing is lost.</p></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="crOk">Restore</button></div>`);
+  $("#crOk").onclick = () => {
+    closeDialog(); saveBidCopy("Before restoring “" + c.name + "”", true); commit();
+    const o = JSON.parse(c.d), pics = new Map(); for (const it of p.items) for (const t of it.templates || []) if (t.g) pics.set(tplKey(t), t.g);
+    for (const it of o.items) if (it.templates) it.templates = it.templates.map(t => ({ ...t, g: t.g || pics.get(tplKey(t)) })).filter(t => t.g);
+    restoreState(JSON.stringify(o)); p.quote = o.quote; if (o.baseline) p.baseline = o.baseline; else delete p.baseline;
+    S.copiesOpen = true; changed({ sheets: true }); renderQuote(); toast("Restored: " + c.name);
+  };
+}
+function deleteBidCopy(id) {
+  const p = P(), c = (p.copies || []).find(x => x.id === id); if (!c) return;
+  openDialog(`<div class="dlg-h"><h3>Delete this copy?</h3></div><div class="dlg-b"><p style="margin:0">“${esc(c.name)}” will be removed. The job itself doesn't change.</p></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn danger" id="cdOk">Delete copy</button></div>`);
+  $("#cdOk").onclick = () => { p.copies = p.copies.filter(x => x.id !== id); closeDialog(); markDirty(); renderQuote(); };
 }
 async function exportSubmittal() {
   const p = P(), items = p.items.filter(i => qtyOf(i, new Set(p.pages.map(g => g.id))) > 0);
@@ -2349,6 +2410,7 @@ async function runExport(x) {
     if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
     busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate }[x];
     await f();
+    if (x === "qdocx" || x === "qpdf") { const q = P().quote; if (saveBidCopy("Quote " + (q.quoteNo || "") + " exported · " + dayStr(Date.now()), true) && S.tab === "quote") renderQuote(); }
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
 }
 
@@ -2424,7 +2486,7 @@ function bind() {
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
-  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; if (e.target.id === "copiesBox") S.copiesOpen = e.target.open; }, true);
   $("#pane-quote").addEventListener("change", (e) => { const d = e.target.dataset, q = P().quote;
     if (d.cond) { (q.conds ||= {})[d.cond] = e.target.checked; S.condOpen = true; }
     else if (d.condv) { (q.condV ||= {})[d.condv] = +e.target.value || 0; S.condOpen = true; }
@@ -2435,7 +2497,7 @@ function bind() {
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
