@@ -317,7 +317,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
         <label class="btn sm primary" for="fileAdd">+ Add</label><input type="file" id="fileAdd" accept="application/pdf,image/png,image/jpeg" multiple hidden>
       </div>
       <div class="rail-body" id="sheetList"></div>
-      <div style="padding:8px;border-top:1px solid var(--line)"><button class="btn sm" id="btnCompare" style="width:100%;justify-content:center">Compare two sheets</button></div>
+      <div style="padding:8px;border-top:1px solid var(--line);display:grid;gap:6px"><button class="btn sm" id="btnFind" style="width:100%;justify-content:center" title="Search every sheet (Ctrl+F)">Find text on drawings</button><button class="btn sm" id="btnCompare" style="width:100%;justify-content:center">Compare two sheets</button></div>
     </aside>
     <div class="viewer" id="viewer">
       <canvas id="cv"></canvas>
@@ -600,6 +600,7 @@ const ICON = {
   rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
   highlight: '<path d="M4 20h7M14 4l6 6-9 9H5v-6z"/>',
   stamp: '<path d="M8 21h8M6 17h12v-3a3 3 0 00-3-3h-1V8a2 2 0 10-4 0v3H9a3 3 0 00-3 3z"/>',
+  photo: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   exclude: '<rect x="4" y="4" width="16" height="16" rx="1"/><path d="M4 12L12 4M4 20L20 4M12 20l8-8"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   eyeoff: '<path d="M3 3l18 18M10.6 6.1A10 10 0 0112 6c6 0 10 6 10 6a17 17 0 01-3.2 3.7M6.6 6.6A17 17 0 002 12s4 7 10 7a9.6 9.6 0 004.2-1"/>',
@@ -974,6 +975,7 @@ function drawNow() {
   if (S.compare) return drawOverlayUI(g);
   if (hit) { const h2 = S.hi; if (h2 && h2.pg === pg.id) g.drawImage(h2.canvas, h2.rect[0], h2.rect[1], h2.rect[2], h2.rect[3]); wantHi(pg, hit); }
   const z = S.zoom, px = 1 / z;
+  if (S.findHit && S.findHit.pg === pg.id) { const r = S.findHit.r; g.save(); g.fillStyle = "rgba(255,214,0,.35)"; g.fillRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.strokeStyle = "#E9A800"; g.lineWidth = 2.5 * px; g.strokeRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.restore(); }
   // exclusion zones
   for (const e of pg.excl || []) {
     g.save(); g.fillStyle = "rgba(90,106,130,.14)"; g.fillRect(e[0], e[1], e[2], e[3]); g.beginPath(); g.rect(e[0], e[1], e[2], e[3]); g.clip();
@@ -1027,7 +1029,10 @@ function drawMarkup(g, mk, px, sel) {
   else if (mk.type === "arrow") { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); const a = Math.atan2(y2 - y1, x2 - x1), L = 14 * px; g.beginPath(); g.moveTo(x2, y2); g.lineTo(x2 - L * Math.cos(a - .45), y2 - L * Math.sin(a - .45)); g.lineTo(x2 - L * Math.cos(a + .45), y2 - L * Math.sin(a + .45)); g.closePath(); g.fill(); }
   else if (mk.type === "text") { const fs = (mk.fs || 14) * px; g.font = `600 ${fs}px "IBM Plex Sans", sans-serif`; g.textBaseline = "top"; const lines = String(mk.text || "").split("\n"); const tw = Math.max(...lines.map(l => g.measureText(l).width)) + 10 * px; g.fillStyle = "rgba(255,255,255,.92)"; g.fillRect(x1, y1, tw, lines.length * fs * 1.25 + 8 * px); g.strokeRect(x1, y1, tw, lines.length * fs * 1.25 + 8 * px); g.fillStyle = mk.color; lines.forEach((l, i) => g.fillText(l, x1 + 5 * px, y1 + 4 * px + i * fs * 1.25)); }
   else if (mk.type === "stamp") { const fs = 22 * px; g.font = `700 ${fs}px "Barlow Condensed", sans-serif`; const t = (mk.text || "REVISED").toUpperCase(); const tw = g.measureText(t).width + 20 * px; g.save(); g.translate(x1, y1); g.rotate(-0.12); g.lineWidth = 3 * px; g.strokeRect(0, 0, tw, fs + 12 * px); g.textBaseline = "top"; g.fillText(t, 10 * px, 7 * px); g.font = `500 ${10 * px}px "IBM Plex Mono", monospace`; g.fillText(new Date(mk.at || Date.now()).toISOString().slice(0, 10), 10 * px, fs + 15 * px); g.restore(); }
-  else if (mk.type === "area" && mk.pts) { g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
+  else if (mk.type === "photo") { const b = mk.box, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, r = 11 * px; const n = P().markups.filter(m => m.type === "photo" && m.page === mk.page).indexOf(mk) + 1;
+    g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = "#13203A"; g.fill(); g.lineWidth = 2 * px; g.strokeStyle = "#fff"; g.stroke(); g.fillStyle = "#fff"; g.fillRect(cx - 6 * px, cy - 3.5 * px, 12 * px, 8 * px); g.beginPath(); g.arc(cx, cy + .5 * px, 2.6 * px, 0, 7); g.fillStyle = "#13203A"; g.fill();
+    g.font = `bold ${10 * px}px system-ui,sans-serif`; g.fillStyle = "#13203A"; g.fillText("Photo " + n + (mk.note ? ": " + String(mk.note).slice(0, 40) : ""), cx + r + 3 * px, cy + 3.5 * px); }
+  else if (mk.type === "area" && mk.pts) { if (mk.deduct) g.setLineDash([6 * px, 4 * px]); g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], (mk.deduct ? "DEDUCT − " : "") + areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
   if (sel) { g.setLineDash([4 * px, 3 * px]); g.strokeStyle = "#13203A"; g.lineWidth = 1 * px; const b = markupBounds(mk); g.strokeRect(b[0] - 4 * px, b[1] - 4 * px, b[2] + 8 * px, b[3] + 8 * px); g.setLineDash([]); }
   g.restore();
 }
@@ -1129,7 +1134,7 @@ async function guessScale(pp) {
 /* ------------------------- Tools ------------------------- */
 const TOOLS = [
   ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["circuit", "Circuit", "U"], ["area", "Area", "A"], ["scale", "Scale", "S"], "|",
-  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], "|", ["exclude", "Ignore", "X"],
+  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], ["photo", "Photo", "O"], "|", ["exclude", "Ignore", "X"],
 ];
 function renderToolbar() {
   $("#toolbar").innerHTML = TOOLS.map(t => t === "|" ? '<span class="tsep"></span>' : `<button class="tool ${S.tool === t[0] ? "on" : ""}" data-tool="${t[0]}" title="${t[1]} (${t[2]})">${svgI(t[0] === "measure" ? "measure" : t[0])}<span>${t[1]}</span></button>`).join("");
@@ -1150,6 +1155,7 @@ function updHint() {
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
+    photo: `Click a spot on the sheet, then take or choose a photo. With the Select tool, click a camera pin to see the photo.`,
     exclude: `Drag a box over the title block, notes or legend so counting ignores it. Click a grey zone to remove it.`,
   };
   h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + T[S.tool];
@@ -1163,9 +1169,9 @@ function renderSubbar() {
     if (!S.measureItem || !itemOf(S.measureItem)) S.measureItem = runs[0]?.id || null;
     h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
   } else if (S.tool === "scale") {
-    const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
+    const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><button class="btn sm" id="scalePick">Use on chosen sheets…</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
-    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>`; }
+    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>${S.areaItem ? `<label class="row" style="gap:4px;font-size:13px" title="Subtract this shape: openings, cut-outs, areas not in scope"><input type="checkbox" id="areaDed" ${S.areaDeduct ? "checked" : ""}> Deduct</label>` : ""}`; }
     h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
     if (S.tool === "stamp") h += `<select class="inp" id="stampSel" style="width:auto">${["REVISED", "APPROVED", "AS BUILT", "FOR REVIEW", "NOT IN CONTRACT", "FIELD VERIFY"].map(s => `<option ${S.markStyle.stamp === s ? "selected" : ""}>${s}</option>`).join("")}</select>`;
   }
@@ -1198,7 +1204,7 @@ function onUp(e) {
   const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top; let [x, y] = toPt(sx, sy);
   cv().style.cursor = S.tool === "pan" ? "grab" : S.tool === "select" ? "default" : "crosshair";
   if (p.panning) { if (!p.moved && S.tool === "select") { S.sel = null; renderSide(); draw(); } return; }
-  if (p.moveMk) { if (p.moved) { const mk = itemMk(p.moveMk.id), now = JSON.stringify(mk); Object.assign(mk, JSON.parse(p.moveMk.orig)); commit(); Object.assign(mk, JSON.parse(now)); changed(); } return; }
+  if (p.moveMk) { if (!p.moved) { const mk0 = itemMk(p.moveMk.id); if (mk0?.type === "photo") return showPhoto(mk0); } if (p.moved) { const mk = itemMk(p.moveMk.id), now = JSON.stringify(mk); Object.assign(mk, JSON.parse(p.moveMk.orig)); commit(); Object.assign(mk, JSON.parse(now)); changed(); } return; }
   const pg = page();
   if (S.draft?.box) {
     const [x1, y1] = S.draft.box, bx = Math.min(x1, x), by = Math.min(y1, y), bw = Math.abs(x - x1), bh = Math.abs(y - y1), kind = S.draft.kind;
@@ -1210,6 +1216,7 @@ function onUp(e) {
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
   }
   if (S.tool === "text") return placeText(x, y, sx, sy);
+  if (S.tool === "photo") return addPhoto(pg, x, y);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
   if (["measure", "area", "scale", "circuit"].includes(S.tool)) {
     if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
@@ -1238,8 +1245,44 @@ function finishDraft() {
     commit(); P().runs.push({ id: uid(), item: it.id, page: pg.id, pts: sq, drops: devices, dropLen: S.dropLen ?? (P().units === "m" ? 3 : 10), circuit: "Circuit " + n, homerun: true });
     S.draft = null; changed(); renderSubbar();
     const L = runLen(P().runs[P().runs.length - 1], pg); toast(`Circuit ${n}: ${devices} device${devices === 1 ? "" : "s"}, ${L == null ? "set the sheet scale to get the length" : lenTxt(L) + " of wire including drops and waste"}.`);
-  } else if (d.kind === "area" && d.pts.length >= 3) { const ai = itemOf(S.areaItem); commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, at: Date.now() }); S.draft = null; changed(); if (ai && !pg.scale) toast("Area saved. Set this sheet's scale to get its size."); }
+  } else if (d.kind === "area" && d.pts.length >= 3) { const ai = itemOf(S.areaItem); commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, deduct: ai && S.areaDeduct ? true : undefined, at: Date.now() }); S.draft = null; changed(); if (ai && !pg.scale) toast("Area saved. Set this sheet's scale to get its size."); }
   else { S.draft = null; draw(); }
+}
+S.txt = {};
+async function pageText(g) {
+  if (S.txt[g.id]) return S.txt[g.id];
+  const doc = docOf(g); if (!doc || doc.kind !== "pdf") return (S.txt[g.id] = []);
+  try { const pdf = await getPdf(doc), pp = await pdf.getPage(g.index + 1), vp = pp.getViewport({ scale: 1 }), tc = await pp.getTextContent();
+    S.txt[g.id] = tc.items.filter(it => (it.str || "").trim()).map(it => { const h = Math.hypot(it.transform[2], it.transform[3]) || 8; const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]); return { s: it.str, x, y: y - h, w: Math.max(it.width || 0, h), h: h * 1.2 }; });
+  } catch (e) { S.txt[g.id] = []; }
+  return S.txt[g.id];
+}
+async function findText() {
+  if (!P()?.pages.length) return toast("Add drawings first.");
+  openDialog(`<div class="dlg-h"><h3>Find text on drawings</h3></div><div class="dlg-b"><input class="inp" id="fq" placeholder="Panel name, tag or note (e.g. LP-2, EF-1, GFCI)" autocomplete="off" value="${esc(S.findQ || "")}"><div id="fres" class="muted" style="max-height:52vh;overflow:auto;display:grid;gap:4px">Type at least 2 letters.</div><p class="muted" style="margin:0;font-size:12px">Searches the text inside PDF drawings. Scanned drawings and photos have no text to search.</p></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  let tm = null; const run = async () => { const q = $("#fq").value.trim(); S.findQ = q; const out = $("#fres"); if (!out) return; if (q.length < 2) { out.textContent = "Type at least 2 letters."; return; }
+    out.textContent = "Searching…"; const ql = q.toLowerCase(), hits = [];
+    for (let i = 0; i < P().pages.length; i++) { const g = P().pages[i]; for (const t of await pageText(g)) if (t.s.toLowerCase().includes(ql)) hits.push({ i, g, t }); if ($("#fq")?.value.trim() !== q) return; }
+    out.innerHTML = hits.length ? `<b style="color:var(--ink)">${hits.length} found</b>` + hits.slice(0, 300).map((h, k) => `<button class="btn ghost sm" data-fh="${k}" style="justify-content:flex-start;text-align:left"><b>${esc(h.g.name)}</b>&nbsp;<span class="muted">${esc(h.t.s.trim().slice(0, 70))}</span></button>`).join("") : "Nothing found on these sheets.";
+    $$("[data-fh]").forEach(b => b.onclick = async () => { const h = hits[+b.dataset.fh]; closeDialog(); if (S.pageIdx !== h.i) await openPage(h.i); S.findHit = { pg: h.g.id, r: [h.t.x, h.t.y, h.t.w, h.t.h] }; if (S.zoom < 1.2) S.zoom = 1.6; centerOn(h.t.x + h.t.w / 2, h.t.y + h.t.h / 2); });
+  };
+  $("#fq").oninput = () => { clearTimeout(tm); tm = setTimeout(run, 250); }; $("#fq").focus(); if (S.findQ) run();
+}
+function addPhoto(pg, x, y) {
+  if (P().locked) return lockGuard();
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.setAttribute("capture", "environment");
+  inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return;
+    try { const bmp = await createImageBitmap(f); const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)); const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const img = c.toDataURL("image/jpeg", .72); commit(); const mk = { id: uid(), page: pg.id, type: "photo", box: [x - 11, y - 11, x + 11, y + 11], img, note: "", color: "#13203A", at: Date.now() }; P().markups.push(mk); changed(); showPhoto(mk, true);
+    } catch (e) { toast("Couldn't read that photo. Try a JPG or PNG."); } };
+  inp.click();
+}
+function showPhoto(mk, isNew) {
+  const g = P().pages.find(x => x.id === mk.page);
+  openDialog(`<div class="dlg-h"><h3>Site photo · ${esc(g?.name || "")}</h3></div><div class="dlg-b"><img src="${mk.img}" alt="Site photo" style="width:100%;max-height:52vh;object-fit:contain;border-radius:8px;background:#000"><label class="field"><span>Note (shows on the sheet and in the marked-up PDF)</span><input class="inp" id="phNote" value="${esc(mk.note || "")}" placeholder="e.g. Existing panel LP-2, no spare breakers"></label><p class="muted" style="margin:0;font-size:12px">Taken ${new Date(mk.at).toLocaleString("en-CA")}</p></div>
+   <div class="dlg-f"><button class="btn danger" id="phDel">Delete photo</button><span class="spacer"></span><button class="btn primary" id="phOk">${isNew ? "Save" : "Done"}</button></div>`);
+  $("#phOk").onclick = () => { const v = $("#phNote").value.trim(); if (v !== (mk.note || "")) { mk.note = v; markDirty(); } closeDialog(); draw(); renderSide(); };
+  $("#phDel").onclick = () => { if (P().locked) return lockGuard(); commit(); P().markups = P().markups.filter(m => m.id !== mk.id); closeDialog(); changed(); };
 }
 function hitAnything(x, y) {
   const pg = page(), tol = 9 / S.zoom;
@@ -1510,7 +1553,39 @@ function segmentLegend(g, W, H) {
 }
 
 /* ------------------------- Revision compare ------------------------- */
-async function compareSheets() {
+async function signOff() {
+  const t = totals(), q = P().quote;
+  openDialog(`<div class="dlg-h"><h3>Customer sign-off</h3></div><div class="dlg-b"><p style="margin:0">Quote total <b>${money(t.total)}</b>${q.client ? " for " + esc(q.client) : ""}. Hand the screen to the customer.</p>
+   ${t.alts.length ? `<div class="eyebrow">Alternates the customer wants</div>${t.alts.map((a, i) => `<label class="row" style="gap:8px"><input type="checkbox" data-sga="${i}"> ${esc(a.it.name)} <span class="muted">(add ${money(a.sell)})</span></label>`).join("")}` : ""}
+   <label class="field"><span>Customer name</span><input class="inp" id="sgName" value="${esc(q.attn || q.client || "")}"></label>
+   <div class="eyebrow">Sign below with a finger or the mouse</div><canvas id="sgPad" width="900" height="260" style="width:100%;height:150px;border:1.5px dashed var(--line);border-radius:8px;background:#fff;touch-action:none"></canvas>
+   <p class="muted" style="margin:0;font-size:12px">By signing, the customer accepts this quotation and authorizes the work.</p></div>
+   <div class="dlg-f"><button class="btn" id="sgClr">Clear</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="sgOk">Save signature</button></div>`);
+  const c = $("#sgPad"), g = c.getContext("2d"); g.lineWidth = 4; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#13203A"; let down = false, inked = false;
+  const pt = (e) => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
+  c.onpointerdown = (e) => { down = true; c.setPointerCapture(e.pointerId); const [x, y] = pt(e); g.beginPath(); g.moveTo(x, y); };
+  c.onpointermove = (e) => { if (!down) return; const [x, y] = pt(e); g.lineTo(x, y); g.stroke(); inked = true; };
+  c.onpointerup = () => { down = false; };
+  $("#sgClr").onclick = () => { g.clearRect(0, 0, c.width, c.height); inked = false; };
+  $("#sgOk").onclick = () => { const name = $("#sgName").value.trim(); if (!name) return toast("Add the customer's name."); if (!inked) return toast("The customer needs to sign in the box.");
+    q.sign = { name, at: Date.now(), img: c.toDataURL("image/png"), alts: $$("[data-sga]").filter(x => x.checked).map(x => t.alts[+x.dataset.sga].it.name), total: t.total }; markDirty(); closeDialog(); renderQuote(); toast("Signed. Export the quote as PDF to keep the signed copy."); };
+}
+function addsOmits() {
+  const sets = [...new Set(P().docs.map(d => d.set).filter(Boolean))];
+  if (sets.length < 2) return toast("Add the new revision as its own drawing set first: add the PDF, then click its blue set label to name it (e.g. Rev 1).");
+  const opt = (v) => sets.map(x => `<option ${x === v ? "selected" : ""}>${esc(x)}</option>`).join("");
+  openDialog(`<div class="dlg-h"><h3>Adds and omits between drawing sets</h3></div><div class="dlg-b"><div class="grid2"><label class="field"><span>Was (older set)</span><select class="inp" id="aoA">${opt(sets[0])}</select></label><label class="field"><span>Now (newer set)</span><select class="inp" id="aoB">${opt(sets[sets.length - 1])}</select></label></div><div id="aoOut"></div></div><div class="dlg-f"><button class="btn" data-close>Close</button><button class="btn primary" id="aoXls">Excel</button></div>`);
+  let rows = [];
+  const run = () => { const A = $("#aoA").value, B = $("#aoB").value, of = (st) => new Set(P().pages.filter(g => docOf(g)?.set === st).map(g => g.id));
+    const pa = of(A), pb = of(B); rows = [];
+    for (const it of P().items) { const r = (q) => it.kind !== "count" ? Math.ceil(q) : q; const qa = r(qtyOf(it, pa)), qb = r(qtyOf(it, pb)), d = qb - qa; if (!d) continue; const c = lineCost(it, Math.abs(d)); rows.push({ it, qa, qb, d, v: Math.sign(d) * markupsOn(c.matM + c.lab).sell }); }
+    rows.sort((x, y) => Math.abs(y.v) - Math.abs(x.v)); const net = rows.reduce((a, r) => a + r.v, 0);
+    $("#aoOut").innerHTML = rows.length ? `<table class="t"><tr><th style="text-align:left">Item</th><th class="r">Was</th><th class="r">Now</th><th class="r">Change</th><th class="r">Value</th></tr>${rows.map(r => `<tr><td>${esc(r.it.name)}</td><td class="r num">${fmt(r.qa)}</td><td class="r num">${fmt(r.qb)}</td><td class="r num" style="color:${r.d > 0 ? "var(--green,#12A150)" : "var(--red,#E5484D)"}">${r.d > 0 ? "+" : ""}${fmt(r.d)} ${unitOf(r.it)}</td><td class="r num">${r.v >= 0 ? "" : "−"}${money(Math.abs(r.v))}</td></tr>`).join("")}<tr><td colspan="4"><b>Net change (sell price, before tax)</b></td><td class="r num"><b>${net >= 0 ? "+" : "−"}${money(Math.abs(net))}</b></td></tr></table><p class="muted" style="margin:0;font-size:12px">Count each item on both sets first. Use this as the backup for a change order.</p>` : `<p class="muted">No quantity changes between these sets.</p>`; };
+  $("#aoA").onchange = run; $("#aoB").onchange = run; run();
+  $("#aoXls").onclick = () => { const A = $("#aoA").value, B = $("#aoB").value; const csv = [["Item", "Unit", A, B, "Change", "Value"], ...rows.map(r => [r.it.name, unitOf(r.it), r.qa, r.qb, r.d, Math.round(r.v * 100) / 100])].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+    saveFile(slug(P().name) + "-adds-omits.csv", new Blob(["\ufeff" + csv], { type: "text/csv" })); };
+}
+function compareSheets() {
   if (P().pages.length < 2) return toast("Add at least two sheets to compare.");
   const opts = P().pages.map((p, i) => `<option value="${i}">${esc(p.name)} — ${esc(docOf(p).set || "")}</option>`).join("");
   openDialog(`<div class="dlg-h"><h3>Compare two sheets</h3></div><div class="dlg-b"><p class="muted" style="margin:0">Overlay an old and a new version. <b style="color:#C3352B">Red</b> was removed, <b style="color:#1D8A55">green</b> was added.</p>
@@ -1544,7 +1619,7 @@ function hideCompareBar() { if ($("#cmpExit")) { $("#subbar").hidden = true; $("
 function pagesInScope() { const p = P(); if (S.scope === "page") return new Set([page()?.id]); if (S.scope.startsWith("set:")) { const set = S.scope.slice(4); return new Set(p.pages.filter(g => docOf(g).set === set).map(g => g.id)); } return new Set(p.pages.map(g => g.id)); }
 function qtyOf(it, pages = pagesInScope()) {
   if (it.kind === "count") return P().marks.filter(m => m.item === it.id && pages.has(m.page)).length;
-  if (it.kind === "area") { let A = 0; for (const mk of P().markups) if (mk.type === "area" && mk.item === it.id && pages.has(mk.page)) { const pg = P().pages.find(g => g.id === mk.page); if (pg?.scale) A += polyArea(mk.pts) * pg.scale.m * pg.scale.m; } A *= 1 + (it.waste || 0) / 100; return P().units === "m" ? A : A / (M_PER_FT * M_PER_FT); }
+  if (it.kind === "area") { let A = 0; for (const mk of P().markups) if (mk.type === "area" && mk.item === it.id && pages.has(mk.page)) { const pg = P().pages.find(g => g.id === mk.page); if (pg?.scale) A += (mk.deduct ? -1 : 1) * polyArea(mk.pts) * pg.scale.m * pg.scale.m; } A = Math.max(0, A); A *= 1 + (it.waste || 0) / 100; return P().units === "m" ? A : A / (M_PER_FT * M_PER_FT); }
   let L = 0; for (const r of P().runs) if (r.item === it.id && pages.has(r.page)) { const pg = P().pages.find(g => g.id === r.page); const l = runLen(r, pg); if (l != null) L += l; }
   return P().units === "m" ? L : L / M_PER_FT;
 }
@@ -1588,7 +1663,7 @@ function renderTakeoff() {
   }
   h += `<div class="row"><button class="btn sm" id="addManual">+ Add item by hand</button></div>`;
   if (sets.length > 1) {
-    h += `<div class="cat"><div class="cat-h"><b>Changes between sets</b></div><div class="row" style="margin:6px 0"><select class="inp" id="setA" style="flex:1">${sets.map(s => `<option>${esc(s)}</option>`).join("")}</select><span class="muted">to</span><select class="inp" id="setB" style="flex:1">${sets.map((s, i) => `<option ${i === sets.length - 1 ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></div><div id="setDiff"></div></div>`;
+    h += `<div class="cat"><div class="cat-h"><b>Changes between sets</b><button class="btn sm" id="btnAddsOmits" style="margin-left:auto">Priced report</button></div><div class="row" style="margin:6px 0"><select class="inp" id="setA" style="flex:1">${sets.map(s => `<option>${esc(s)}</option>`).join("")}</select><span class="muted">to</span><select class="inp" id="setB" style="flex:1">${sets.map((s, i) => `<option ${i === sets.length - 1 ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></div><div id="setDiff"></div></div>`;
   }
   el.innerHTML = h; $("#scopeSel").value = S.scope;
   if (sets.length > 1) { const upd = () => setDiff($("#setA").value, $("#setB").value); $("#setA").onchange = upd; $("#setB").onchange = upd; upd(); }
@@ -1637,8 +1712,9 @@ function renderQuote() {
    ${t.alts.length ? `<div class="eyebrow">Alternates (priced separately)</div><table class="t">${t.alts.map(a => `<tr><td>${esc(a.it.name)} <span class="muted">${fmt(a.qty)} ${a.unit}</span></td><td class="r num">add ${money(a.sell)}</td></tr>`).join("")}</table>` : ""}
    ${bidSummaryHtml(t)}
    ${changeOrderHtml()}
+   ${q.sign ? `<div class="warnbox" style="background:var(--soft,#EEF4FF)">Signed by <b>${esc(q.sign.name)}</b> on ${new Date(q.sign.at).toLocaleString("en-CA")}${q.sign.alts?.length ? ` · alternates accepted: ${esc(q.sign.alts.join(", "))}` : ""}. The signature prints on the PDF quote. <button class="btn ghost sm" id="qUnsign">Clear</button></div>` : ""}
    ${logHtml()}
-   <div class="row">${S.ai ? '<button class="btn" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
+   <div class="row">${S.ai ? '<button class="btn" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn" id="qSign">Customer sign-off</button><button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
 }
 
@@ -1861,7 +1937,8 @@ const thumbs = {};
 function renderSheets() {
   const el = $("#sheetList"); if (!el || !S.proj) return;
   if (!P().docs.length) { el.innerHTML = `<p class="muted" style="margin:6px;line-height:1.5">No drawings yet. Press <b>+ Add</b> or drop PDFs on the canvas.</p>`; return; }
-  el.innerHTML = P().docs.map(d => `<div class="docgrp"><div class="docgrp-h"><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><button class="chip blue" data-setlbl="${d.id}" title="Rename this drawing set">${esc(d.set)}</button><button class="btn ghost sm" data-deldoc="${d.id}" title="Remove this drawing file" style="padding:2px">${svgI("trash", 14)}</button></div>` +
+  const noSc = P().pages.filter(g => !g.scale).length;
+  el.innerHTML = (noSc ? `<div class="warnbox" style="margin:6px;font-size:12.5px;display:block">${noSc} sheet${noSc > 1 ? "s have" : " has"} no scale yet, so lengths and areas there won't add up. Open the sheet, pick Scale, then "Use on chosen sheets".</div>` : "") + P().docs.map(d => `<div class="docgrp"><div class="docgrp-h"><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><button class="chip blue" data-setlbl="${d.id}" title="Rename this drawing set">${esc(d.set)}</button><button class="btn ghost sm" data-deldoc="${d.id}" title="Remove this drawing file" style="padding:2px">${svgI("trash", 14)}</button></div>` +
     P().pages.map((g, i) => g.docId !== d.id ? "" : `<button class="sheet ${i === S.pageIdx ? "on" : ""}" data-page="${i}"><img class="th" alt="" ${thumbs[g.id] ? `src="${thumbs[g.id]}"` : ""} data-th="${g.id}"><span class="meta"><b>${esc(g.name)}</b><span class="row" style="gap:4px">${(() => { const n = P().marks.filter(m => m.page === g.id).length; return n ? `<span class="chip">${n} ticks</span>` : ""; })()}${g.scale ? "" : '<span class="chip amber">no scale</span>'}</span></span></button>`).join("") + `</div>`).join("");
   queueThumbs();
 }
@@ -2353,7 +2430,10 @@ async function exportQuotePdf() {
   w.heading("7. Exclusions"); w.bullets(m.excl);
   w.heading("8. Payment terms"); w.text(m.pay);
   w.heading("9. Acceptance"); w.text("We accept this quotation and authorize the work described above.", { after: 22 });
-  w.table([["Name: ______________________________", "Signature: ______________________________"], ["Title: ______________________________", "Date: ______________________________"]], [5040, 5040]);
+  const sg = P().quote.sign;
+  if (sg?.img) { if (sg.alts?.length) w.text("Alternates accepted: " + sg.alts.join(", "), { bold: true }); w.text("Accepted by " + sg.name + " on " + new Date(sg.at).toLocaleString("en-CA") + (sg.total != null ? " (quote total " + money(sg.total) + ")" : ""), { after: 64 });
+    try { const im = await w.doc.embedPng(sg.img); const h = 54, wd = h * im.width / im.height; w.page.drawImage(im, { x: w.M, y: w.y + 4, width: wd, height: h }); w.page.drawLine({ start: { x: w.M, y: w.y + 2 }, end: { x: w.M + 260, y: w.y + 2 }, thickness: .8, color: w.grey }); w.text("Customer signature", { size: 8.5, color: w.grey }); } catch (e) { } }
+  else w.table([["Name: ______________________________", "Signature: ______________________________"], ["Title: ______________________________", "Date: ______________________________"]], [5040, 5040]);
   saveFile(slug(m.name) + "-quote.pdf", await w.save());
 }
 async function exportTakeoffPdf() {
@@ -2386,6 +2466,10 @@ async function exportMarkedPdf() {
     counts.forEach(([it, q], j) => { const col = parseInt(it.color.slice(1), 16); const x = 12 + (j % 4) * (pw - 24) / 4, y = ph - g.h - 30 - Math.floor(j / 4) * 14; pp.drawCircle({ x: x + 4, y: y + 3, size: 4, color: rgb((col >> 16 & 255) / 255, (col >> 8 & 255) / 255, (col & 255) / 255) }); pp.drawText(ascii(`${it.name}: ${fmt(it.kind !== "count" ? Math.ceil(q) : q)} ${unitOf(it)}`).slice(0, 48), { x: x + 12, y, size: 8, font: F, color: rgb(.1, .12, .2) }); });
     await sleep(5);
   }
+  const photos = p.markups.filter(m => m.type === "photo" && m.img);
+  for (const ph of photos) { try { const g = p.pages.find(x => x.id === ph.page), n = photos.filter(m => m.page === ph.page).indexOf(ph) + 1; const im = await doc.embedJpg(ph.img); const W = 612, H = 792, k = Math.min((W - 72) / im.width, (H - 140) / im.height); const pp = doc.addPage([W, H]);
+    pp.drawText(ascii(`${g?.name || ""} - Photo ${n}`), { x: 36, y: H - 44, size: 14, font: F, color: rgb(.08, .33, .82) }); if (ph.note) pp.drawText(ascii(ph.note).slice(0, 100), { x: 36, y: H - 62, size: 10, font: F, color: rgb(.1, .12, .2) });
+    pp.drawText(ascii(new Date(ph.at).toLocaleString("en-CA")), { x: 36, y: H - 76, size: 8, font: F, color: rgb(.45, .5, .58) }); pp.drawImage(im, { x: 36, y: H - 92 - im.height * k, width: im.width * k, height: im.height * k }); } catch (e) { } }
   busy(false);
   if (!doc.getPageCount()) return toast("No sheets could be drawn.");
   saveFile(slug(p.name) + "-marked-drawings.pdf", new Blob([await doc.save()], { type: "application/pdf" }));
@@ -2427,7 +2511,8 @@ function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("o
 let spaceDown = false;
 function bind() {
   window.addEventListener("resize", sizeCanvas);
-  $("#btnPB").onclick = openPriceBook; $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
+  $("#btnPB").onclick = openPriceBook;
+  document.addEventListener("click", (e) => { if (e.target.id === "btnFind") findText(); if (e.target.id === "btnAddsOmits") addsOmits(); }); $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
   $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -2449,12 +2534,16 @@ function bind() {
     if (e.target.id === "unitsSel") { P().units = e.target.value; P().items.forEach(i => { if (i.kind === "length") i.unit = P().units; }); changed(); }
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
     if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
+    if (e.target.id === "areaDed") S.areaDeduct = e.target.checked;
     if (e.target.id === "tickSel") { P().tick = +e.target.value; markDirty(); draw(); }
     if (e.target.id === "areaSel") { if (e.target.value === "__newA") { addManualItem("area"); } else S.areaItem = e.target.value || null; }
   };
   $("#subbar").oninput = (e) => { if (e.target.id === "tickSel") { P().tick = +e.target.value; draw(); } };
   $("#subbar").onclick = (e) => {
     const c = e.target.closest("[data-mcol]"); if (c) { S.markStyle.color = c.dataset.mcol; renderSubbar(); }
+    if (e.target.id === "scalePick") { if (!page()?.scale) return toast("Set this sheet's scale first, then copy it to other sheets."); const sc = page().scale;
+      openDialog(`<div class="dlg-h"><h3>Use ${esc(sc.label)} on…</h3></div><div class="dlg-b"><p class="muted" style="margin:0">Sheets with no scale are ticked.</p><div style="max-height:50vh;overflow:auto;display:grid;gap:4px">${P().pages.map((g, i) => `<label class="row" style="gap:8px"><input type="checkbox" data-scp="${i}" ${!g.scale ? "checked" : ""}> <span style="flex:1">${esc(g.name)}</span><span class="muted" style="font-size:12px">${g.scale ? esc(g.scale.label) : "no scale"}</span></label>`).join("")}</div></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="scpOk">Apply</button></div>`);
+      $("#scpOk").onclick = () => { const pick = $$("[data-scp]").filter(c => c.checked).map(c => P().pages[+c.dataset.scp]); if (!pick.length) return closeDialog(); commit(); pick.forEach(g => g.scale = { ...sc }); closeDialog(); changed({ sheets: true }); toast(`Scale set on ${pick.length} sheet${pick.length > 1 ? "s" : ""}.`); }; return; }
     if (e.target.id === "scaleAll" && page()?.scale) { commit(); P().pages.forEach(g => g.scale = { ...page().scale }); changed({ sheets: true }); toast("Scale applied to every sheet."); }
   };
   const c = cv(); c.addEventListener("pointerdown", onDown); c.addEventListener("pointermove", onMove); c.addEventListener("pointerup", onUp); c.addEventListener("contextmenu", e => e.preventDefault());
@@ -2497,7 +2586,7 @@ function bind() {
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
@@ -2506,6 +2595,7 @@ function bind() {
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === "f") { e.preventDefault(); findText(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (k === " ") { spaceDown = true; return; }
     if (k === "escape") { S.draft = null; S.sel = null; closePop(); draw(); return; }
