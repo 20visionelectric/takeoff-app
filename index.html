@@ -380,7 +380,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.14.0";
+const V = "4.15.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -914,7 +914,7 @@ async function countItem(item, scopePages, { quiet = false } = {}) {
       const pg = scopePages[pi];
       busy(true, `Counting ${item.name}`, `Sheet ${pi + 1} of ${scopePages.length}: ${pg.name}`, true);
       let r; try { r = await renderPage(pg); } catch (e) { continue; }
-      const g = grayOf(r.canvas);
+      const g = grayOf(r.canvas); const isNeg = negFilter(item, g, r.canvas.width, r.canvas.height, r.ppt);
       const excl = (pg.excl || []).map(e => [e[0] * r.ppt, e[1] * r.ppt, e[2] * r.ppt, e[3] * r.ppt]);
       // drop previous auto marks for this item on this sheet, keep manual ones
       P().marks = P().marks.filter(m => !(m.item === item.id && m.page === pg.id && m.src !== "manual"));
@@ -929,6 +929,7 @@ async function countItem(item, scopePages, { quiet = false } = {}) {
           // a different item's weaker auto mark at same spot loses
           P().marks = P().marks.filter(o => !(o.page === pg.id && o.item !== item.id && o.src === "auto" && Math.hypot(o.x - x, o.y - y) < rad && (o.sf ?? o.s ?? 0) < mf));
           const rec = { id: uid(), item: item.id, page: pg.id, x, y, s: +m.s.toFixed(3), sf: +mf.toFixed(3), src: "auto", w: m.w / r.ppt, h: m.h / r.ppt };
+          if (isNeg(rec, m.s)) continue;
           if (m.s >= opts.thr) { P().marks.push(rec); existing.push(rec); added++; }
           else maybes.push(rec);
         }
@@ -1057,7 +1058,7 @@ function drawMarkup(g, mk, px, sel) {
     g.font = `bold ${10 * px}px system-ui,sans-serif`; g.fillStyle = "#13203A"; g.fillText("Photo " + n + (mk.note ? ": " + String(mk.note).slice(0, 40) : ""), cx + r + 3 * px, cy + 3.5 * px); }
   else if (mk.type === "zone" && mk.pts) drawZone(g, mk, px);
   else if (mk.type === "callout" && mk.box) drawCallout(g, mk, px);
-  else if (mk.type === "area" && mk.pts) { if (mk.deduct) g.setLineDash([6 * px, 4 * px]); g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], (mk.deduct ? "DEDUCT − " : "") + areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
+  else if (mk.type === "area" && mk.pts) { if (mk.deduct) g.setLineDash([6 * px, 4 * px]); g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], (mk.room ? mk.room + " · " : "") + (mk.deduct ? "DEDUCT − " : "") + areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
   if (sel) { g.setLineDash([4 * px, 3 * px]); g.strokeStyle = "#13203A"; g.lineWidth = 1 * px; const b = markupBounds(mk); g.strokeRect(b[0] - 4 * px, b[1] - 4 * px, b[2] + 8 * px, b[3] + 8 * px); g.setLineDash([]); }
   g.restore();
 }
@@ -1178,6 +1179,7 @@ function updHint() {
     measure: `Click along the conduit or cable route. <b>Double-click</b> or Enter to finish, Esc to cancel.` + noScale,
     circuit: `<b>Click the panel</b>, then click each device on the circuit (clicks snap to counted ticks). <b>Double-click</b> or Enter to finish. The wire is routed square to the walls, with a drop at every device.` + noScale,
     area: `Click the corners of the area. <b>Double-click</b> to finish.` + noScale,
+    room: `<b>Click inside a room</b> and the walls around it become the area. Raise "Close gaps" if it leaks through a door.`,
     zone: `Click the corners of a zone (a unit, floor area or phase). <b>Double-click</b> to finish, then name it. Use the same name on every sheet.`,
     callout: `<b>Drag</b> from the spot you mean to where the note should sit, then type the note.`,
     aibox: `<b>Drag a box</b> around the part of the drawing you want to ask about.`,
@@ -1188,7 +1190,7 @@ function updHint() {
     photo: `Click a spot on the sheet, then take or choose a photo. With the Select tool, click a camera pin to see the photo.`,
     exclude: `Drag a box over the title block, notes or legend so counting ignores it. Click a grey zone to remove it.`,
   };
-  h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + T[S.tool];
+  h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
@@ -1197,11 +1199,11 @@ function renderSubbar() {
   } else if (S.tool === "measure" || S.tool === "circuit") {
     const runs = P()?.items.filter(i => i.kind === "length") || [];
     if (!S.measureItem || !itemOf(S.measureItem)) S.measureItem = runs[0]?.id || null;
-    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
+    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "measure" ? `<label class="row" style="gap:4px;font-size:13px" title="Three clicks: start, a point on the curve, end"><input type="checkbox" id="arcSel" ${S.runArc ? "checked" : ""}> Arc</label>` : ""}${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
   } else if (S.tool === "scale") {
     const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><button class="btn sm" id="scalePick">Use on chosen sheets…</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
-    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>${S.areaItem ? `<label class="row" style="gap:4px;font-size:13px" title="Subtract this shape: openings, cut-outs, areas not in scope"><input type="checkbox" id="areaDed" ${S.areaDeduct ? "checked" : ""}> Deduct</label>` : ""}`; }
+    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>${S.areaItem ? `<label class="row" style="gap:4px;font-size:13px" title="Subtract this shape: openings, cut-outs, areas not in scope"><input type="checkbox" id="areaDed" ${S.areaDeduct ? "checked" : ""}> Deduct</label>` : ""}<label class="row" style="gap:4px;font-size:13px" title="Click once inside a room; the walls around it become the area"><input type="checkbox" id="roomSel" ${S.roomFill ? "checked" : ""}> One click per room</label>${S.roomFill ? `<label class="row" style="gap:4px;font-size:12px" title="Closes door openings and small gaps in the walls, in drawing points">Close gaps <input class="inp num" id="roomGap" type="number" min="1" max="40" value="${S.roomGap ?? 4}" style="width:54px"></label>` : `<label class="row" style="gap:4px;font-size:13px" title="Click the centre, then the edge"><input type="checkbox" id="circSel" ${S.areaCircle ? "checked" : ""}> Circle</label>`}`; }
     h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
     if (S.tool === "stamp") h += `<select class="inp" id="stampSel" style="width:auto">${["REVISED", "APPROVED", "AS BUILT", "FOR REVIEW", "NOT IN CONTRACT", "FIELD VERIFY"].map(s => `<option ${S.markStyle.stamp === s ? "selected" : ""}>${s}</option>`).join("")}</select>`;
   }
@@ -1250,6 +1252,7 @@ function onUp(e) {
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "photo") return addPhoto(pg, x, y);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
+  if (S.tool === "area" && S.roomFill && !S.draft) return roomFill(x, y);
   if (["measure", "area", "scale", "circuit", "zone"].includes(S.tool)) {
     if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
     if (S.tool === "circuit") { const tol = 14 / S.zoom; let best = null, bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = m; } } if (best) { x = best.x; y = best.y; } S.draft.snaps.push(!!best); }
@@ -1257,6 +1260,8 @@ function onUp(e) {
     if (last && Math.hypot(last[0] - x, last[1] - y) * S.zoom < 4) return; // dblclick second click
     let q = [x, y]; if (e.shiftKey && last) { if (Math.abs(x - last[0]) > Math.abs(y - last[1])) q = [x, last[1]]; else q = [last[0], y]; }
     S.draft.pts.push(q); draw();
+    if (S.tool === "area" && S.areaCircle && S.draft.pts.length === 2) { S.draft.pts = circlePts(S.draft.pts[0], S.draft.pts[1]); return finishDraft(); }
+    if (S.tool === "measure" && S.runArc && S.draft.pts.length === 3) { S.draft.pts = arcPts(S.draft.pts[0], S.draft.pts[1], S.draft.pts[2]); return finishDraft(); }
     if (S.tool === "scale" && S.draft.pts.length === 2) calibrate(S.draft.pts);
   }
 }
@@ -1500,7 +1505,7 @@ async function reviewMaybes(it) {
   const state = crops.map(() => null);
   openDialog(`<div class="dlg-h"><h3>Possible ${esc(it.name)}</h3><span class="chip amber">${crops.length} to check</span></div>
    <div class="dlg-b"><div class="row"><img src="${tplImg(it.templates[0])}" style="width:56px;height:56px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px"><p style="margin:0;flex:1" class="muted">These look close to your symbol but weren't certain. Click each one that <b>is</b> a ${esc(it.name)}.${S.ai && S.aiImages ? " Or let AI decide." : ""}</p></div>
-   <div class="crops" id="crops">${crops.map((c, i) => `<div class="crop" data-i="${i}"><span class="n">${i + 1} · ${Math.round((c.m.s || 0) * 100)}%</span><img src="${c.c.toDataURL()}" alt="Possible match ${i + 1}"></div>`).join("")}</div><div id="aiNote" class="muted" style="font-size:12.5px"></div></div>
+   <div class="crops" id="crops">${crops.map((c, i) => `<div class="crop" data-i="${i}"><span class="n">${i + 1} · ${Math.round((c.m.s || 0) * 100)}%</span><img src="${c.c.toDataURL()}" alt="Possible match ${i + 1}"></div>`).join("")}</div><div id="aiNote" class="muted" style="font-size:12.5px"></div><label class="row" style="gap:6px;font-size:12.5px"><input type="checkbox" id="mbLearn" checked> Remember the ones I leave unticked as "not this", and skip look-alikes next time I count</label></div>
    <div class="dlg-f">${S.ai && S.aiImages ? '<button class="btn" id="mbAI">Let AI decide</button>' : ""}<button class="btn" id="mbOrd" type="button" title="Change the order">${S.revLow ? "Most sure first" : "Least sure first"}</button><button class="btn" id="mbAll">Select all</button><button class="btn" id="mbNone">Ignore all</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="mbOk">Add selected</button></div>`);
   $("#mbOrd").onclick = () => { S.revLow = !S.revLow; reviewMaybes(it); };
   const paint = () => $$("#crops .crop").forEach((el, i) => { el.classList.toggle("yes", state[i] === true); el.classList.toggle("no", state[i] === false); });
@@ -1518,8 +1523,10 @@ async function reviewMaybes(it) {
     } catch (e) { $("#aiNote").textContent = aiErr(e); }
   };
   $("#mbOk").onclick = () => {
+    const learn = $("#mbLearn")?.checked, no = crops.filter((c, i) => state[i] !== true).map(c => c.m);
     commit(); crops.forEach((c, i) => { if (state[i] === true) P().marks.push({ ...c.m, id: uid(), src: "auto" }); });
     it.maybes = it.maybes.filter(m => !crops.some(c => c.m === m)); closeDialog(); changed({ sheets: true });
+    if (learn && no.length) learnNegatives(it, no).then(n => { if (n) { markDirty(); toast(`Learned ${n} "not this" example${n > 1 ? "s" : ""} for ${it.name}. Recount to use them.`); } });
   };
 }
 function contactSheet(tp, canvases) {
@@ -1764,16 +1771,17 @@ const BREAKS = { cat: ["Category", it => it.cat || "Other"], sys: ["System", it 
 function breakdown(dim) {
   const p = P(), by = {};
   const add = (k, c) => { const e = by[k] ||= { mat: 0, hrs: 0, lab: 0 }; e.mat += c.matM; e.hrs += c.hrs; e.lab += c.lab; };
-  if (dim === "zone") { for (const it of p.items.filter(i => !i.alt)) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) add(k, lineCost(it, q)); return by; }
-  if (dim === "sheet" || dim === "set") { for (const g of p.pages) { const one = new Set([g.id]); const k = dim === "sheet" ? g.name : (docOf(g)?.set || "-"); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, one); if (q) add(k, lineCost(it, q)); } } }
-  else { const all = new Set(p.pages.map(g => g.id)); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, all); if (q) add(BREAKS[dim][1](it), lineCost(it, it.kind !== "count" ? Math.ceil(q) : q)); } }
+  if (dim === "zone") { for (const it of p.items.filter(i => !i.alt && bqOk(i))) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) add(k, lineCost(it, q)); return by; }
+  if (dim === "sheet" || dim === "set") { for (const g of p.pages) { const one = new Set([g.id]); const k = dim === "sheet" ? g.name : (docOf(g)?.set || "-"); for (const it of p.items.filter(i => !i.alt && bqOk(i))) { const q = qtyOf(it, one); if (q) add(k, lineCost(it, q)); } } }
+  else { const all = new Set(p.pages.map(g => g.id)); for (const it of p.items.filter(i => !i.alt && bqOk(i))) { const q = qtyOf(it, all); if (q) add(BREAKS[dim][1](it), lineCost(it, it.kind !== "count" ? Math.ceil(q) : q)); } }
   return by;
 }
 function bidSummaryHtml(t) {
   if (!t.lines.length) return "";
   const dim = S.breakDim || "cat"; const by = breakdown(dim); const tot = Object.values(by).reduce((a, v) => ({ mat: a.mat + v.mat, hrs: a.hrs + v.hrs }), { mat: 0, hrs: 0 });
   return `<details ${S.breakOpen ? "open" : ""} id="bsBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid summary and breakdowns</summary>
-    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:12.5px">Break down by</span><select class="inp" id="bsDim" style="width:auto">${Object.entries(BREAKS).map(([k, v]) => `<option value="${k}" ${k === dim ? "selected" : ""}>${v[0]}</option>`).join("")}</select></div>
+    <div class="row" style="margin-top:6px"><span class="muted" style="font-size:12.5px">Break down by</span><select class="inp" id="bsDim" style="width:auto">${Object.entries(BREAKS).map(([k, v]) => `<option value="${k}" ${k === dim ? "selected" : ""}>${v[0]}</option>`).join("")}</select>${S.breakQ ? `<span class="chip blue">only: ${esc(S.breakQ)} <button class="linkbtn" id="bsClear" type="button" aria-label="Clear filter">✕</button></span>` : ""}</div>
+    ${S.ai ? `<div class="row" style="gap:6px"><input class="inp" id="bsQ" placeholder='Ask for a report, e.g. "labour by floor, lighting only"' style="flex:1"><button class="btn sm" id="bsAsk" type="button">Show</button></div>` : ""}
     <table class="t"><tr><th style="text-align:left">${BREAKS[dim][0]}</th><th class="r">Material</th><th class="r">Hours</th></tr>${Object.entries(by).sort((a, b) => b[1].mat + b[1].lab - a[1].mat - a[1].lab).map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r num">${money(v.mat)}</td><td class="r num">${fmt(v.hrs, 1)}</td></tr>`).join("")}<tr><td><b>Total</b></td><td class="r num"><b>${money(tot.mat)}</b></td><td class="r num"><b>${fmt(tot.hrs, 1)}</b></td></tr></table>
     ${(() => { const t2 = totals(), a = +P().quote.area || 0, r = (x) => a ? money(x / a) : "-";
       return `<div class="eyebrow" style="margin-top:6px">Sanity checks</div><label class="field"><span>Building area (sq ft) for cost-per-square-foot</span><input class="inp" id="bsArea" type="number" min="0" value="${a || ""}"></label>
@@ -1781,7 +1789,7 @@ function bidSummaryHtml(t) {
       <p class="muted" style="margin:0;font-size:12px">Compare these with past jobs of the same type. A number far off usually means a missed item or a wrong price.</p>`; })()}
     ${benchHtml(dim)}
     <p class="muted" style="margin:0;font-size:12px">Set System, Phase / area and Cost code on each item (pencil in the Takeoff list) to break the bid down those ways.</p></details>
-    ${jobCostHtml()}`;
+    ${jobCostHtml()}${costsHtml()}`;
 }
 function logChanges(p) {
   const all = new Set(p.pages.map(g => g.id)), now = {}, prev = p._snap || null, log = p.log ||= [];
@@ -1834,7 +1842,7 @@ function lockBaseline() {
 /* ------------------------- Saved copies and lock ------------------------- */
 const tplKey = (t) => [t.page, t.x, t.y, t.w, t.h].join("|");
 // Symbol pictures are large, so copies keep only where each one came from; restore takes the picture back from the job.
-function bidData(p) { return JSON.stringify({ items: p.items.map(it => it.templates?.length ? { ...it, templates: it.templates.map(t => ({ ...t, g: undefined })) } : it), marks: p.marks, runs: p.runs, markups: p.markups, pages: p.pages.map(g => ({ id: g.id, scale: g.scale, excl: g.excl, name: g.name })), quote: p.quote, baseline: p.baseline || null }); }
+function bidData(p) { return JSON.stringify({ items: p.items.map(it => it.templates?.length ? { ...it, neg: undefined, templates: it.templates.map(t => ({ ...t, g: undefined })) } : it), marks: p.marks, runs: p.runs, markups: p.markups, pages: p.pages.map(g => ({ id: g.id, scale: g.scale, excl: g.excl, name: g.name })), quote: p.quote, baseline: p.baseline || null }); }
 function saveBidCopy(name, onlyIfChanged) {
   const p = P(); if (!p || p.sample && !p.keep) return null;
   const d = bidData(p), list = p.copies ||= [];
@@ -1917,7 +1925,7 @@ function renderAIPane() {
   if (!S.ai) { el.innerHTML = `<div class="pane"><p class="muted" style="line-height:1.55;margin:0">Ask AI works when this app is opened in Claude. It answers questions about your drawings and takeoff, names symbols, reads legends and checks possible matches.</p></div>`; return; }
   el.innerHTML = `<div class="pane" id="chatScroll"><div class="chat" id="chat"></div>
     <div id="chatStart"><p class="muted" style="margin:0 0 8px;line-height:1.5">Ask about this job, the drawing on screen, materials or installation. ${S.web ? "It can search the live web and read pages, and lists the links it used." : "Answers use your takeoff and what's on screen. Live web search works when this app is open in the Claude desktop app."}</p>
-    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button>${S.aiImages ? '<button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
+    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="__spec">Read a spec book for submittals</button>${S.aiImages ? '<button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
     <div class="ask"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><textarea class="inp" id="askBox" rows="2" placeholder="Ask anything about this job…"></textarea><div class="row" style="gap:12px">${S.web ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askWeb" checked> Search the live web</label>' : ""}${S.aiImages ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askView"> Include what I\'m looking at</label>' : ""}</div></div><button class="btn primary" id="askGo">Ask</button></div>`;
   for (const m of S.chat) addMsg(m.role, m.content, false);
 }
@@ -3100,14 +3108,15 @@ function quickQuote() {
   if (!S.ai) return toast("Quick quote uses the optional AI. Add your AI key in AI settings on the Jobs screen first.");
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   openDialog(`<div class="dlg-h"><h3>Quick quote from a description</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Say or type the job, e.g. "6 pot lights, 2 GFCIs in the kitchen, 40 feet of 14/2, one 20 amp circuit". Items are picked from your price book and this job first, and you check every line before it's added.</p>
-   <textarea class="inp" id="qqText" rows="5" placeholder="Describe the work…"></textarea>${SR ? `<button class="btn sm" id="qqMic" type="button">🎤 Speak</button>` : ""}<div id="qqOut"></div></div>
+   <textarea class="inp" id="qqText" rows="5" placeholder="Describe the work…"></textarea>${S.aiImages ? `<label class="field"><span>Photos of the room or panel (optional)</span><input type="file" id="qqPh" accept="image/*" multiple></label>` : ""}${SR ? `<button class="btn sm" id="qqMic" type="button">🎤 Speak</button>` : ""}<div id="qqOut"></div></div>
    <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="qqGo">Make line items</button></div>`);
   if (SR) { let rec = null; $("#qqMic").onclick = () => { if (rec) { rec.stop(); return; } rec = new SR(); rec.lang = "en-CA"; rec.continuous = true; rec.interimResults = false; const base = $("#qqText").value; let said = ""; rec.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) said += e.results[i][0].transcript + " "; $("#qqText").value = (base + " " + said).trim(); }; rec.onend = () => { rec = null; if ($("#qqMic")) $("#qqMic").textContent = "🎤 Speak"; }; rec.onerror = () => toast("The microphone isn't available. Type the job instead."); rec.start(); $("#qqMic").textContent = "■ Stop"; }; }
   $("#qqGo").onclick = async () => {
-    const text = $("#qqText").value.trim(); if (!text) return;
+    const text = $("#qqText").value.trim(), files = [...($("#qqPh")?.files || [])].slice(0, 4); if (!text && !files.length) return;
+    const imgs = []; for (const f of files) { try { const bmp = await createImageBitmap(f); const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height)); const c = document.createElement("canvas"); c.width = bmp.width * k; c.height = bmp.height * k; c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); imgs.push(await toBlob(c, "image/jpeg", .82)); } catch (e) { } }
     const names = [...new Set([...P().items.map(i => i.name), ...Object.values(PB).map(e => e.name)])].slice(0, 400);
     $("#qqGo").disabled = true; $("#qqGo").textContent = "Working…";
-    let j; try { j = await S.ai.json(`A ${tr().name.toLowerCase()} contractor in Ontario described a small job. Turn it into takeoff lines. Prefer these existing item names exactly when they fit: ${JSON.stringify(names)}. Reply with only JSON: {"lines":[{"name": string, "qty": number, "kind": "count"|"length"|"area", "existing": true|false}]}. Lengths in ${P().units === "m" ? "metres" : "feet"}, areas in ${P().units === "m" ? "square metres" : "square feet"}. Don't invent prices.\n\nJOB: ${text}`, { modelTier: "default" }); }
+    let j; try { j = await S.ai.json(`A ${tr().name.toLowerCase()} contractor in Ontario described a small job. Turn it into takeoff lines. Prefer these existing item names exactly when they fit: ${JSON.stringify(names)}. Reply with only JSON: {"lines":[{"name": string, "qty": number, "kind": "count"|"length"|"area", "existing": true|false}]}. Lengths in ${P().units === "m" ? "metres" : "feet"}, areas in ${P().units === "m" ? "square metres" : "square feet"}. Don't invent prices.${imgs.length ? " Photos of the site are attached: count what's visible that the work needs." : ""}\n\nJOB: ${text || "(see photos)"}`, { modelTier: "default", ...(imgs.length ? { images: imgs } : {}) }); }
     catch (e) { $("#qqGo").disabled = false; $("#qqGo").textContent = "Make line items"; return toast(aiErr(e)); }
     const lines = (j?.lines || []).filter(l => l?.name && +l.qty > 0);
     $("#qqGo").disabled = false; $("#qqGo").textContent = "Add these lines";
@@ -3165,6 +3174,138 @@ async function askAboutBox(pg, bx, by, bw, bh) {
   $("#abPin").onclick = () => { commit(); P().markups.push({ id: uid(), page: pg.id, type: "callout", box: [bx + bw / 2, by + bh / 2, bx + bw + 20, by], text: ans.slice(0, 220), color: "#8E4EC6", at: Date.now() }); closeDialog(); changed(); toast("Answer pinned as a callout on the drawing."); };
 }
 
+/* ------------------------- Nov 22 batch 5 ------------------------- */
+/* Teach the matcher: possible matches you leave unticked are remembered as "not this", and look-alikes are skipped next count. */
+function patchAt(g, W, H, cx, cy, w, h) { const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - h / 2); if (x0 < 0 || y0 < 0 || x0 + w > W || y0 + h > H) return null; const o = new Float32Array(w * h); for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) o[j * w + i] = g[(y0 + j) * W + x0 + i]; return o; }
+function nccArr(a, b) { const n = Math.min(a.length, b.length); let sa = 0, sb = 0; for (let i = 0; i < n; i++) { sa += a[i]; sb += b[i]; } const ma = sa / n, mb = sb / n; let num = 0, da = 0, db = 0; for (let i = 0; i < n; i++) { const x = a[i] - ma, y = b[i] - mb; num += x * y; da += x * x; db += y * y; } return da && db ? num / Math.sqrt(da * db) : 0; }
+async function learnNegatives(it, recs) {
+  if (!recs.length) return 0; let n = 0; it.neg ||= [];
+  for (const m of recs.slice(0, 8)) { const pg = P().pages.find(g => g.id === m.page); if (!pg) continue; let r; try { r = await renderPage(pg); } catch (e) { continue; }
+    const w = Math.max(6, Math.round((m.w || 12) * r.ppt)), h = Math.max(6, Math.round((m.h || 12) * r.ppt)), X = Math.round(m.x * r.ppt - w / 2), Y = Math.round(m.y * r.ppt - h / 2);
+    if (X < 0 || Y < 0 || X + w > r.canvas.width || Y + h > r.canvas.height) continue; const ng = grayOf(r.canvas, X, Y, w, h);
+    if ((it.templates || []).some(tp => tp.w === w && tp.h === h && Math.abs(tp.ppt - r.ppt) / r.ppt < 0.05 && nccArr(Float32Array.from(ng), Float32Array.from(unb64(tp.g))) > 0.9)) continue; // too close to the real symbol: don't learn it
+    it.neg.push({ g: b64(ng), w, h, ppt: r.ppt }); n++; }
+  if (it.neg.length > 16) it.neg = it.neg.slice(-16); return n;
+}
+function negFilter(it, g, W, H, ppt) {
+  const negs = (it.neg || []).filter(n => Math.abs(n.ppt - ppt) / ppt < 0.05).map(n => ({ ...n, a: Float32Array.from(unb64(n.g)) })); if (!negs.length) return () => false;
+  return (rec, score) => { for (const n of negs) { const p = patchAt(g, W, H, rec.x * ppt, rec.y * ppt, n.w, n.h); if (!p) continue; const s = nccArr(p, n.a); if (s > 0.82 && s > score) return true; } return false; };
+}
+
+/* One-click room area: click inside a room and the walls around it become an area. */
+async function roomFill(x, y) {
+  const pg = page(); if (!pg) return; busy(true, "Finding the room", "");
+  try {
+    const r = await renderPage(pg), k = Math.min(1, 1800 / Math.max(r.canvas.width, r.canvas.height)), W = Math.round(r.canvas.width * k), H = Math.round(r.canvas.height * k);
+    const c = document.createElement("canvas"); c.width = W; c.height = H; c.getContext("2d").drawImage(r.canvas, 0, 0, W, H); const g = grayOf(c);
+    const wall = new Uint8Array(W * H); for (let i = 0; i < g.length; i++) if (g[i] < 150) wall[i] = 1;
+    const gap = Math.max(1, Math.round((S.roomGap ?? 4) * k * r.ppt / 2)); // close door openings and small gaps
+    const dil = new Uint8Array(W * H); for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) if (wall[yy * W + xx]) for (let dy = -gap; dy <= gap; dy++) { const Y = yy + dy; if (Y < 0 || Y >= H) continue; for (let dx = -gap; dx <= gap; dx++) { const X = xx + dx; if (X >= 0 && X < W) dil[Y * W + X] = 1; } }
+    const sx = Math.round(x * r.ppt * k), sy = Math.round(y * r.ppt * k); if (sx < 0 || sy < 0 || sx >= W || sy >= H || dil[sy * W + sx]) { busy(false); return toast("Click in an open part of the room, away from lines and text."); }
+    const fill = new Uint8Array(W * H), st = [sy * W + sx]; fill[sy * W + sx] = 1; let n = 0, edge = false;
+    while (st.length) { const i = st.pop(); n++; const xx = i % W, yy = (i - xx) / W; if (xx === 0 || yy === 0 || xx === W - 1 || yy === H - 1) edge = true; if (n > W * H * 0.35) { edge = true; break; } for (const j of [i - 1, i + 1, i - W, i + W]) if (j >= 0 && j < W * H && !fill[j] && !dil[j]) { fill[j] = 1; st.push(j); } }
+    if (edge) { busy(false); return toast("That space isn't closed in. Close the door gap (raise \"Close gaps\") or draw the area by clicking its corners."); }
+    // grow back by the gap so the area reaches the wall faces, then trace the outline
+    const grown = new Uint8Array(W * H); for (let i = 0; i < fill.length; i++) if (fill[i]) { const xx = i % W, yy = (i - xx) / W; for (let dy = -gap; dy <= gap; dy++) for (let dx = -gap; dx <= gap; dx++) { const X = xx + dx, Y = yy + dy; if (X >= 0 && Y >= 0 && X < W && Y < H && !wall[Y * W + X]) grown[Y * W + X] = 1; } }
+    const poly = traceOutline(grown, W, H).map(([px, py]) => [px / k / r.ppt, py / k / r.ppt]); busy(false);
+    if (poly.length < 3) return toast("Couldn't trace that room. Draw it by clicking its corners.");
+    const ai = itemOf(S.areaItem); let name = "";
+    try { const txt = await pageText(pg); const inside = txt.filter(t => inPoly(poly, t.x + t.w / 2, t.y + t.h / 2) && /[A-Za-z]{3,}/.test(t.s)).sort((a, b) => b.h - a.h); name = inside[0]?.s.trim() || ""; } catch (e) { }
+    commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: poly, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, room: name || undefined, at: Date.now() }); changed();
+    toast(`${name ? name + ": " : ""}${areaTxt(polyArea(poly), pg)}. Check the outline; Ctrl+Z undoes.`);
+  } catch (e) { busy(false); toast("Couldn't trace that room."); }
+}
+function traceOutline(m, W, H) {
+  let s = -1; for (let i = 0; i < m.length; i++) if (m[i]) { s = i; break; } if (s < 0) return [];
+  const at = (x, y) => x >= 0 && y >= 0 && x < W && y < H && m[y * W + x];
+  const sx = s % W, sy = (s - sx) / W, pts = []; let x = sx, y = sy, dir = 0; const D = [[1, 0], [0, 1], [-1, 0], [0, -1]];
+  for (let guard = 0; guard < W * H * 4; guard++) { pts.push([x, y]); let moved = false; for (let t = 0; t < 4; t++) { const nd = (dir + 3 + t) % 4, nx = x + D[nd][0], ny = y + D[nd][1]; if (at(nx, ny)) { x = nx; y = ny; dir = nd; moved = true; break; } } if (!moved || (x === sx && y === sy && pts.length > 2)) break; }
+  return simplify(pts, 1.5);
+}
+function simplify(pts, eps) {
+  if (pts.length < 3) return pts; const d = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1; return Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / L; };
+  const rec = (s, e, out) => { let md = 0, mi = -1; for (let i = s + 1; i < e; i++) { const v = d(pts[i], pts[s], pts[e]); if (v > md) { md = v; mi = i; } } if (md > eps && mi > 0) { rec(s, mi, out); rec(mi, e, out); } else out.push(pts[s]); };
+  const out = []; rec(0, pts.length - 1, out); return out;
+}
+
+/* Circle areas and arc runs. */
+function circlePts(c, e, n = 48) { const R = Math.hypot(e[0] - c[0], e[1] - c[1]); return Array.from({ length: n }, (_, i) => [c[0] + R * Math.cos(i / n * 2 * Math.PI), c[1] + R * Math.sin(i / n * 2 * Math.PI)]); }
+function arcPts(a, b, c, n = 24) {
+  const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])); if (Math.abs(d) < 1e-6) return [a, c];
+  const ux = ((a[0] ** 2 + a[1] ** 2) * (b[1] - c[1]) + (b[0] ** 2 + b[1] ** 2) * (c[1] - a[1]) + (c[0] ** 2 + c[1] ** 2) * (a[1] - b[1])) / d, uy = ((a[0] ** 2 + a[1] ** 2) * (c[0] - b[0]) + (b[0] ** 2 + b[1] ** 2) * (a[0] - c[0]) + (c[0] ** 2 + c[1] ** 2) * (b[0] - a[0])) / d, R = Math.hypot(a[0] - ux, a[1] - uy);
+  const ang = (p) => Math.atan2(p[1] - uy, p[0] - ux); let t0 = ang(a), t1 = ang(b), t2 = ang(c); const norm = (t) => { while (t < t0) t += 2 * Math.PI; return t; }; t1 = norm(t1); t2 = norm(t2); if (t1 > t2) t2 -= 2 * Math.PI;
+  return Array.from({ length: n + 1 }, (_, i) => { const t = t0 + (t2 - t0) * i / n; return [ux + R * Math.cos(t), uy + R * Math.sin(t)]; });
+}
+
+/* Plain-words report: ask for a breakdown and the AI sets it up. */
+const bqOk = (it) => { const q = (S.breakQ || "").trim().toLowerCase(); if (!q) return true; const hay = [it.name, it.cat, it.sys, it.phase, it.cc].join(" ").toLowerCase(); return q.split(/\s*,\s*|\s+or\s+/).some(w => w && hay.includes(w)); };
+async function askReport(text) {
+  if (!S.ai || !text) return;
+  const dims = Object.entries(BREAKS).map(([k, v]) => k + " = " + v[0]).join("; ");
+  try { const j = await S.ai.json(`An estimator wants a bid report: "${text}". Choose how to group it from: ${dims}. Optionally give a filter: words that item names, categories, systems, phases or cost codes must contain (comma separated), or "" for everything. Categories on this job: ${JSON.stringify(catsAll(P().items))}. Systems: ${JSON.stringify([...new Set(P().items.map(i => i.sys).filter(Boolean))])}. Phases: ${JSON.stringify([...new Set(P().items.map(i => i.phase).filter(Boolean))])}. Reply with only JSON: {"dim": one key, "filter": string}.`, { modelTier: "default" });
+    if (BREAKS[j?.dim]) S.breakDim = j.dim; S.breakQ = String(j?.filter || ""); S.breakOpen = true; renderQuote(); toast(`Showing: by ${BREAKS[S.breakDim][0].toLowerCase()}${S.breakQ ? ", only " + S.breakQ : ""}.`); }
+  catch (e) { toast(aiErr(e)); }
+}
+
+/* Text out of a PDF (used by spec and receipt readers). */
+async function pdfTextOf(file, maxPages = 12) {
+  await pdfReady; const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise; let text = "";
+  for (let i = 1; i <= Math.min(pdf.numPages, maxPages); i++) { const tc = await (await pdf.getPage(i)).getTextContent(); let y = null, line = []; const lines = []; for (const t of tc.items) { const ty = Math.round(t.transform[5]); if (y !== null && Math.abs(ty - y) > 3) { lines.push(line.join(" ")); line = []; } y = ty; if (t.str.trim()) line.push(t.str.trim()); } lines.push(line.join(" ")); text += `\n[page ${i}]\n` + lines.filter(Boolean).join("\n"); }
+  return { text, pages: pdf.numPages };
+}
+
+/* Spec book reader: fills manufacturer and model for submittals. */
+function readSpecBook() {
+  if (!S.ai) return toast("Reading spec books uses the optional AI. Add your AI key in AI settings first.");
+  if (!P().items.length) return toast("Add your items first, then read the spec book to fill in their manufacturers.");
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf";
+  inp.onchange = async () => {
+    const f = inp.files?.[0]; if (!f) return; busy(true, "Reading the spec book", f.name);
+    let t; try { t = await pdfTextOf(f, 120); } catch (e) { busy(false); return toast("Couldn't open that PDF."); }
+    if (t.text.replace(/\s/g, "").length < 200) { busy(false); return toast("That PDF has no readable text (it may be a scan)."); }
+    const words = new Set(P().items.flatMap(i => pbKey(i.name).split(" ").filter(w => w.length > 3)));
+    const keep = t.text.split("\n").filter((l, i, a) => /manufactur|acceptable|basis of design|model|catalog|standard|CSA|UL|ULC/i.test(l) || [...words].some(w => l.toLowerCase().includes(w))).join("\n").slice(0, 40000);
+    let j; try { j = await S.ai.json(`Below are lines from a construction specification book (Canada). For each of these takeoff items, find the required or acceptable manufacturer, model / catalogue number and standard if the spec names them: ${JSON.stringify(P().items.map(i => i.name))}. Reply with only JSON: {"items":[{"item": exact item name from the list, "mfr": string, "model": string, "standard": string, "section": string}]}. Leave a field "" when the spec doesn't say. Don't guess.\n\nSPEC LINES:\n${keep}`, { modelTier: "default" }); }
+    catch (e) { busy(false); return toast(aiErr(e)); } busy(false);
+    const rows = (j?.items || []).map(r => ({ ...r, it: P().items.find(i => i.name === r.item) })).filter(r => r.it && (r.mfr || r.model || r.standard));
+    const missing = P().items.filter(i => !rows.some(r => r.it === i));
+    openDialog(`<div class="dlg-h"><h3>Spec book: ${rows.length} items found</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Read by AI from ${esc(f.name)} (${t.pages} pages). Check against the spec before you submit.</p>
+     ${rows.length ? `<div style="max-height:42vh;overflow:auto"><table class="t"><tr><th></th><th style="text-align:left">Item</th><th style="text-align:left">Manufacturer</th><th style="text-align:left">Model / standard</th></tr>${rows.map((r, i) => `<tr><td><input type="checkbox" data-spk="${i}" checked></td><td>${esc(r.it.name)}<div class="muted" style="font-size:11px">${esc(r.section || "")}</div></td><td>${esc(r.mfr || "—")}</td><td>${esc([r.model, r.standard].filter(Boolean).join(" · ") || "—")}</td></tr>`).join("")}</table></div>` : ""}
+     ${missing.length ? `<div class="warnbox" style="display:block"><b>Not named in the spec:</b> ${missing.slice(0, 12).map(i => esc(i.name)).join(", ")}${missing.length > 12 ? "…" : ""}</div>` : ""}</div>
+     <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="spOk" ${rows.length ? "" : "disabled"}>Fill in the ticked items</button></div>`);
+    $("#spOk").onclick = () => { commit(); let n = 0; rows.forEach((r, i) => { if (!$(`[data-spk="${i}"]`).checked) return; if (r.mfr) r.it.mfr = r.mfr; if (r.model) r.it.model = r.model; if (r.standard && !String(r.it.notes || "").includes(r.standard)) r.it.notes = [r.it.notes, "Spec: " + r.standard + (r.section ? " (" + r.section + ")" : "")].filter(Boolean).join("\n"); n++; }); closeDialog(); changed(); toast(`${n} items updated. Export → Submittal package uses them.`); };
+  };
+  inp.click();
+}
+
+/* Receipts into job costing: actual material costs next to the estimate. */
+function costsHtml() {
+  const p = P(); if (!p.baseline) return ""; const list = p.costs || [], sum = list.reduce((a, c) => a + (+c.total || 0), 0), est = totals().matM;
+  return `<details ${S.costOpen ? "open" : ""} id="costBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job costing: material spent ${money(sum)} of ${money(est)}</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">Add supplier receipts and invoices as you buy. ${S.ai ? "The optional AI reads a photo or PDF for you." : "Type them in."}</p>
+   ${list.length ? `<table class="t"><tr><th style="text-align:left">Vendor</th><th style="text-align:left">Cost code</th><th class="r">Total</th><th></th></tr>${list.map((c, i) => `<tr><td>${esc(c.vendor || "")}<div class="muted" style="font-size:11px">${esc(c.date || "")}</div></td><td>${esc(c.cc || "")}</td><td class="r num">${money(+c.total || 0)}</td><td class="r"><button class="btn ghost sm" data-costdel="${i}" title="Remove">${svgI("trash", 14)}</button></td></tr>`).join("")}<tr><td colspan="2"><b>Spent</b>${est ? ` <span class="muted">(${fmt(sum / est * 100)}% of estimated material)</span>` : ""}</td><td class="r num"><b>${money(sum)}</b></td><td></td></tr></table>` : ""}
+   <div class="row" style="gap:6px">${S.ai ? `<button class="btn sm" id="costScan" type="button">Read a receipt (photo or PDF)</button>` : ""}<button class="btn sm" id="costAdd" type="button">+ Add by hand</button></div></details>`;
+}
+function costDialog(c = {}) {
+  const ccs = [...new Set(P().items.map(i => i.cc).filter(Boolean))];
+  openDialog(`<div class="dlg-h"><h3>Receipt or invoice</h3></div><div class="dlg-b"><div class="grid2"><label class="field"><span>Vendor</span><input class="inp" id="csV" value="${esc(c.vendor || "")}"></label><label class="field"><span>Date</span><input class="inp" id="csD" type="date" value="${esc(c.date || new Date().toISOString().slice(0, 10))}"></label></div>
+   <div class="grid2"><label class="field"><span>Total before tax $</span><input class="inp" id="csT" type="number" step="0.01" value="${c.total ?? ""}"></label><label class="field"><span>Cost code / category</span><input class="inp" id="csC" list="csList" value="${esc(c.cc || "")}"><datalist id="csList">${[...ccs, ...catsAll(P().items)].map(v => `<option value="${esc(v)}">`).join("")}</datalist></label></div>
+   ${c.lines?.length ? `<details><summary class="muted" style="cursor:pointer">${c.lines.length} lines read</summary><div style="font-size:12px;max-height:20vh;overflow:auto">${c.lines.map(l => `${esc(l.desc)} — ${l.qty ?? ""} × ${l.price != null ? money(l.price) : ""}`).join("<br>")}</div></details>` : ""}</div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="csOk">Save</button></div>`);
+  $("#csOk").onclick = () => { const v = { vendor: $("#csV").value.trim(), date: $("#csD").value, total: +$("#csT").value || 0, cc: $("#csC").value.trim(), lines: c.lines }; if (!v.total) return toast("Enter the total."); (P().costs ||= []).push(v); S.costOpen = true; closeDialog(); markDirty(); renderQuote(); };
+}
+function scanReceipt() {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,application/pdf"; inp.setAttribute("capture", "environment");
+  inp.onchange = async () => {
+    const f = inp.files?.[0]; if (!f) return; busy(true, "Reading the receipt", f.name); let j;
+    const prompt = `Read this supplier receipt or invoice (Canada). Reply with only JSON: {"vendor": string, "date": "YYYY-MM-DD", "subtotal": number|null (before tax), "total": number|null, "lines": [{"desc": string, "qty": number|null, "price": number|null}]}. Plain numbers only.`;
+    try { if (/pdf/i.test(f.type)) { const t = await pdfTextOf(f, 4); j = await S.ai.json(prompt + "\n\nTEXT:\n" + t.text.slice(0, 16000), { modelTier: "default" }); } else { if (!S.aiImages) throw new Error("no-images"); const bmp = await createImageBitmap(f); const k = Math.min(1, 1800 / Math.max(bmp.width, bmp.height)); const c = document.createElement("canvas"); c.width = bmp.width * k; c.height = bmp.height * k; c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); j = await S.ai.json(prompt, { images: [await toBlob(c, "image/jpeg", .85)], modelTier: "default" }); } }
+    catch (e) { busy(false); return toast(e.message === "no-images" ? "Reading photos needs AI with pictures. Try a PDF, or add it by hand." : aiErr(e)); }
+    busy(false); costDialog({ vendor: j?.vendor || "", date: j?.date || "", total: j?.subtotal ?? j?.total ?? "", lines: (j?.lines || []).filter(l => l?.desc) });
+  };
+  inp.click();
+}
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
@@ -3195,6 +3336,10 @@ function bind() {
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
     if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
     if (e.target.id === "areaDed") S.areaDeduct = e.target.checked;
+    if (e.target.id === "roomSel") { S.roomFill = e.target.checked; S.draft = null; renderSubbar(); updHint(); }
+    if (e.target.id === "roomGap") S.roomGap = clamp(+e.target.value || 4, 1, 40);
+    if (e.target.id === "circSel") { S.areaCircle = e.target.checked; S.draft = null; updHint(); }
+    if (e.target.id === "arcSel") { S.runArc = e.target.checked; S.draft = null; updHint(); }
     if (e.target.id === "tickSel") { P().tick = +e.target.value; markDirty(); draw(); }
     if (e.target.id === "areaSel") { if (e.target.value === "__newA") { addManualItem("area"); } else S.areaItem = e.target.value || null; }
   };
@@ -3243,7 +3388,7 @@ function bind() {
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
-  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; if (e.target.id === "copiesBox") S.copiesOpen = e.target.open; if (e.target.id === "bidBox") S.bidOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; if (e.target.id === "copiesBox") S.copiesOpen = e.target.open; if (e.target.id === "bidBox") S.bidOpen = e.target.open; if (e.target.id === "costBox") S.costOpen = e.target.open; }, true);
   $("#pane-quote").addEventListener("change", (e) => { const d = e.target.dataset, q = P().quote;
     if (d.bid) { const b = P().bid ||= {}; const v = e.target.value; if (d.bid === "addenda") b.addenda = v === "" ? undefined : +v; else b[d.bid] = v || undefined; if (d.bid === "status" && v && !b.since) b.since = Date.now(); S.bidOpen = true; }
     else if (d.cond) { (q.conds ||= {})[d.cond] = e.target.checked; S.condOpen = true; }
@@ -3255,8 +3400,9 @@ function bind() {
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
-  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && (s.dataset.sug === "__box" || s.dataset.sug === "__sched")) { setTool(s.dataset.sug === "__box" ? "aibox" : "aisched"); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "bsAsk") return askReport($("#bsQ").value.trim()); if (e.target.id === "bsClear") { S.breakQ = ""; return renderQuote(); } if (e.target.id === "costScan") return scanReceipt(); if (e.target.id === "costAdd") return costDialog(); const cdx = e.target.closest("[data-costdel]"); if (cdx) { P().costs.splice(+cdx.dataset.costdel, 1); markDirty(); return renderQuote(); } if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && (s.dataset.sug === "__box" || s.dataset.sug === "__sched")) { setTool(s.dataset.sug === "__box" ? "aibox" : "aisched"); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
+  $("#pane-quote").addEventListener("keydown", (e) => { if (e.target.id === "bsQ" && e.key === "Enter") askReport(e.target.value.trim()); });
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
   window.addEventListener("keydown", (e) => {
