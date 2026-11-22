@@ -272,6 +272,7 @@ body.simple .adv{display:none!important}
 .shprog .bar{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;border:1px solid var(--line)}
 .shprog .bar i{display:block;height:100%;background:var(--ok)}
 .chip[data-shst]{cursor:pointer}
+#zGray.on{background:var(--blue-soft);color:var(--blue-ink)}
 .chip.st-prog{background:var(--blue-soft);color:var(--blue-ink);border-color:transparent}
 .chip.st-done,.chip.st-chk{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ink);border-color:transparent}
 </style>
@@ -309,6 +310,7 @@ body.simple .adv{display:none!important}
       <div class="step"><span class="n">STEP 4</span><b>Export the quote</b><span class="muted">Word, PDF or Excel — quote, itemized takeoff and marked-up drawings.</span></div>
     </div>
     <div class="row" style="justify-content:space-between"><h2 style="font-size:22px">Your jobs</h2><span class="row" style="gap:8px"><span class="save-state" id="homeStore"></span><button class="btn sm" id="btnBin" type="button">Recycle bin</button></span></div>
+    <div class="warnbox" id="bidBanner" hidden style="display:block"></div>
     <div class="proj-list" id="projList"></div>
   </div>
 </section>
@@ -347,6 +349,7 @@ body.simple .adv{display:none!important}
         <span class="num" id="zLbl">100%</span>
         <button class="btn ghost sm" id="zIn" title="Zoom in (+)">+</button>
         <button class="btn ghost sm" id="zFit" title="Fit sheet (0)">Fit</button>
+        <button class="btn ghost sm" id="zGray" title="Show the drawing in light grey so your takeoff colours stand out">Grey</button>
       </div>
       <div class="empty-view" id="emptyView" hidden>
         <label class="drop" for="fileAdd" style="max-width:460px">
@@ -377,7 +380,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.13.0";
+const V = "4.14.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -687,7 +690,7 @@ const Cloud = {
     const prev = this._n[p.id] || 0;
     for (let i = n; i < prev; i++) { try { await main.collection("chunks").doc("c" + i).delete(); } catch (e) { } }
     this._n[p.id] = n;
-    await main.set({ type: "project", id: p.id, name: p.name, client: p.quote?.client || "", updatedAt: p.updatedAt, sheets: p.pages.length, items: p.items.length, chunks: n, deletedAt: p.deletedAt || null });
+    await main.set({ type: "project", id: p.id, name: p.name, client: p.quote?.client || "", updatedAt: p.updatedAt, sheets: p.pages.length, items: p.items.length, chunks: n, deletedAt: p.deletedAt || null, bid: p.bid || null });
     return true;
   },
   async load(id) {
@@ -989,9 +992,11 @@ function drawNow() {
   const hit = S.compare ? S.compare : S.cache.get(pg.id);
   g.setTransform(dpr * S.zoom, 0, 0, dpr * S.zoom, dpr * S.panX, dpr * S.panY);
   g.save(); g.shadowColor = "rgba(0,0,0,.25)"; g.shadowBlur = 12 / S.zoom; g.fillStyle = "#fff"; g.fillRect(0, 0, pg.w, pg.h); g.restore();
+  if (GRAY && !S.compare) g.filter = "grayscale(1) contrast(0.55) brightness(1.18)";
   if (hit) { g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high"; g.drawImage(hit.canvas, 0, 0, pg.w, pg.h); }
   if (S.compare) return drawOverlayUI(g);
   if (hit) { const h2 = S.hi; if (h2 && h2.pg === pg.id) g.drawImage(h2.canvas, h2.rect[0], h2.rect[1], h2.rect[2], h2.rect[3]); wantHi(pg, hit); }
+  g.filter = "none";
   const z = S.zoom, px = 1 / z;
   if (S.findHit && S.findHit.pg === pg.id) { const r = S.findHit.r; g.save(); g.fillStyle = "rgba(255,214,0,.35)"; g.fillRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.strokeStyle = "#E9A800"; g.lineWidth = 2.5 * px; g.strokeRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.restore(); }
   // exclusion zones
@@ -1175,6 +1180,8 @@ function updHint() {
     area: `Click the corners of the area. <b>Double-click</b> to finish.` + noScale,
     zone: `Click the corners of a zone (a unit, floor area or phase). <b>Double-click</b> to finish, then name it. Use the same name on every sheet.`,
     callout: `<b>Drag</b> from the spot you mean to where the note should sit, then type the note.`,
+    aibox: `<b>Drag a box</b> around the part of the drawing you want to ask about.`,
+    aisched: `<b>Drag a box</b> around the fixture, panel or equipment schedule.`,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
@@ -1209,7 +1216,7 @@ function onDown(e) {
   const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, [x, y] = toPt(sx, sy);
   ptr = { sx, sy, x, y, moved: false, panning: e.button === 1 || S.tool === "pan" || e.button === 2 || (S.tool === "select" && !hitAnything(x, y)) || spaceDown, px: S.panX, py: S.panY };
   if (ptr.panning) { cv().style.cursor = "grabbing"; return; }
-  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow", "callout"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
+  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow", "callout", "aibox", "aisched"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
   if (S.tool === "select") { const h = hitAnything(x, y); S.sel = h; if (h?.type === "markup") ptr.moveMk = { id: h.id, x, y, orig: JSON.stringify(itemMk(h.id)) }; renderSide(); draw(); }
 }
 const itemMk = (id) => P().markups.find(m => m.id === id);
@@ -1235,6 +1242,7 @@ function onUp(e) {
     if (kind === "count") { if (small) return clickCount(x, y); return startTemplate(bx, by, bw, bh); }
     if (small) { if (kind === "exclude") { const i = (pg.excl || []).findIndex(e => x >= e[0] && x <= e[0] + e[2] && y >= e[1] && y <= e[1] + e[3]); if (i >= 0) { commit(); pg.excl.splice(i, 1); changed(); } } draw(); return; }
     if (kind === "legend") return startLegend(bx, by, bw, bh);
+    if (kind === "aibox" || kind === "aisched") { setTool("select"); return kind === "aibox" ? askAboutBox(pg, bx, by, bw, bh) : checkSchedule(pg, bx, by, bw, bh); }
     if (kind === "exclude") { commit(); (pg.excl ||= []).push([bx, by, bw, bh]); changed(); return; }
     if (kind === "callout") { S.draft = { kind: "callout", box: [x1, y1, x, y] }; draw(); return placeCallout([x1, y1, x, y], sx, sy); }
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
@@ -1646,7 +1654,8 @@ function hideCompareBar() { if ($("#cmpExit")) { $("#subbar").hidden = true; $("
 
 /* ------------------------- Totals ------------------------- */
 function pagesInScope() { const p = P(); if (S.scope === "page") return new Set([page()?.id]); if (S.scope.startsWith("set:")) { const set = S.scope.slice(4); return new Set(p.pages.filter(g => docOf(g).set === set).map(g => g.id)); } return new Set(p.pages.map(g => g.id)); }
-function qtyOf(it, pages = pagesInScope()) {
+function qtyOf(it, pages = pagesInScope()) { const q = qtyBase(it, pages); return +it.addQty && allScope(pages) ? q + (+it.addQty) : q; }
+function qtyBase(it, pages) {
   if (it.kind === "fit") return fitQty(it, pages);
   if (it.kind === "count") return P().marks.filter(m => m.item === it.id && pages.has(m.page)).length;
   if (it.kind === "area") { let A = 0; for (const mk of P().markups) if (mk.type === "area" && mk.item === it.id && pages.has(mk.page)) { const pg = P().pages.find(g => g.id === mk.page); if (pg?.scale) A += (mk.deduct ? -1 : 1) * polyArea(mk.pts) * pg.scale.m * pg.scale.m; } A = Math.max(0, A); A *= 1 + (it.waste || 0) / 100; return P().units === "m" ? A : A / (M_PER_FT * M_PER_FT); }
@@ -1680,14 +1689,14 @@ function renderTakeoff() {
   const len = items.filter(i => i.kind === "length").reduce((a, i) => a + qtyOf(i, sc), 0);
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
   let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div>${items.length > 6 ? `<input class="inp" id="itemSearch" placeholder="Search items…" value="${esc(S.itemQ || "")}" autocomplete="off">` : ""}<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
-   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>${items.length ? `<div class="row" style="gap:6px">${S.bulk ? "" : `<button class="btn sm" id="bulkOn" type="button" title="Tick several items to edit, move or swap them together">Select items</button>`}<button class="btn sm" id="btnGaps" type="button" title="Look for items with no price, labour or materials, and sheets not worked on">Check for gaps</button><button class="btn sm adv" id="btnOrder" type="button" title="Put items in the order you build">Item order</button></div>` : ""}${bulkBar()}`;
+   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>${items.length ? `<div class="row" style="gap:6px">${S.bulk ? "" : `<button class="btn sm" id="bulkOn" type="button" title="Tick several items to edit, move or swap them together">Select items</button>`}<button class="btn sm" id="btnGaps" type="button" title="Look for items with no price, labour or materials, and sheets not worked on">Check for gaps</button><button class="btn sm adv" id="btnOrder" type="button" title="Put items in the order you build">Item order</button>${S.ai ? `<button class="btn sm" id="btnQQ" type="button" title="Say or type the job and get line items from your price book">Quick quote</button>` : ""}</div>` : ""}${bulkBar()}`;
   if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
-  if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.</div>`;
+  if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.${S.ai ? ` No drawings? Use <button class="linkbtn" id="btnQQ" type="button">Quick quote</button> to describe the job in words.` : ""}</div>`;
   for (const cat of (p.keepOrder ? ["Build order"] : catsAll(items))) {
     const its = items.filter(i => (p.keepOrder || i.cat === cat) && (!S.itemQ || (i.name + " " + (i.sys || "") + " " + (i.cc || "")).toLowerCase().includes(S.itemQ.toLowerCase()))); if (!its.length) continue;
     h += `<div class="cat"><div class="cat-h"><b>${cat}</b></div>` + its.map(it => {
       const q = qtyOf(it, sc), hid = S.hidden.has(it.id);
-      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""} ${S.bulk ? "bmode" : ""} ${S.bulk && S.bsel.has(it.id) ? "bsel" : ""}" data-item="${it.id}">${S.bulk ? `<input type="checkbox" class="bchk" ${S.bsel.has(it.id) ? "checked" : ""} tabindex="-1" aria-label="Select ${esc(it.name)}">` : ""}<span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}${priceOld(it) ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px" title="Price set ${priceAge(it)} days ago">old price</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
+      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""} ${S.bulk ? "bmode" : ""} ${S.bulk && S.bsel.has(it.id) ? "bsel" : ""}" data-item="${it.id}">${S.bulk ? `<input type="checkbox" class="bchk" ${S.bsel.has(it.id) ? "checked" : ""} tabindex="-1" aria-label="Select ${esc(it.name)}">` : ""}<span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}${priceOld(it) ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px" title="Price set ${priceAge(it)} days ago">old price</span>` : ""}${+it.addQty ? ` <span class="chip" style="font-size:10.5px;padding:0 5px" title="Extra quantity added by hand">+${fmt(it.addQty, 1)} extra</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
        <span class="acts"><button data-eye="${it.id}" title="${hid ? "Show" : "Hide"} on drawing">${svgI(hid ? "eyeoff" : "eye", 16)}</button>${it.kind === "count" && it.templates?.length ? `<button data-recount="${it.id}" title="Recount on all sheets">${svgI("redo", 16)}</button>` : ""}<button data-edit="${it.id}" title="Edit item">${svgI("edit", 16)}</button></span></div>`;
     }).join("") + `</div>`;
   }
@@ -1719,6 +1728,7 @@ function renderQuote() {
    ${t.unpriced ? `<div class="warnbox">${t.unpriced} item${t.unpriced > 1 ? "s have" : " has"} no unit price. Add prices with the pencil in the Takeoff list.</div>` : ""}
    ${(() => { const old = t.lines.filter(l => priceOld(l.it)); return old.length ? `<div class="warnbox" style="flex-wrap:wrap"><span><b>${old.length}</b> price${old.length > 1 ? "s are" : " is"} more than ${PRICE_DAYS()} days old: ${old.slice(0, 4).map(l => esc(l.it.name)).join(", ")}${old.length > 4 ? "…" : ""}. Check them before sending.</span></div>` : ""; })()}
    <div class="row"><button class="btn sm" id="qGaps" type="button">Check the bid for gaps</button></div>
+   ${bidHtml()}
    <div class="adv" style="display:contents">${copiesHtml()}</div>
    <fieldset ${P().locked ? "disabled" : ""} style="display:contents">
    <div class="grid2">${f("client", "Client")}${f("attn", "Attention")}</div>${f("site", "Project / site address")}
@@ -1907,7 +1917,7 @@ function renderAIPane() {
   if (!S.ai) { el.innerHTML = `<div class="pane"><p class="muted" style="line-height:1.55;margin:0">Ask AI works when this app is opened in Claude. It answers questions about your drawings and takeoff, names symbols, reads legends and checks possible matches.</p></div>`; return; }
   el.innerHTML = `<div class="pane" id="chatScroll"><div class="chat" id="chat"></div>
     <div id="chatStart"><p class="muted" style="margin:0 0 8px;line-height:1.5">Ask about this job, the drawing on screen, materials or installation. ${S.web ? "It can search the live web and read pages, and lists the links it used." : "Answers use your takeoff and what's on screen. Live web search works when this app is open in the Claude desktop app."}</p>
-    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
+    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button>${S.aiImages ? '<button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
     <div class="ask"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><textarea class="inp" id="askBox" rows="2" placeholder="Ask anything about this job…"></textarea><div class="row" style="gap:12px">${S.web ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askWeb" checked> Search the live web</label>' : ""}${S.aiImages ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askView"> Include what I\'m looking at</label>' : ""}</div></div><button class="btn primary" id="askGo">Ask</button></div>`;
   for (const m of S.chat) addMsg(m.role, m.content, false);
 }
@@ -2018,6 +2028,7 @@ function editItem(id) {
     <div class="grid2"><label class="field"><span>Model / catalogue no.</span><input class="inp" id="eModel" value="${esc(it.model || "")}"></label><label class="field"><span>Spec sheet link</span><input class="inp" id="eSpec" value="${esc(it.spec || "")}" placeholder="https://…"></label></div>
     <datalist id="dlSys">${[...new Set(P().items.map(i => i.sys).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist><datalist id="dlPhase">${[...new Set(P().items.map(i => i.phase).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist></details>
    <div class="adv" style="display:contents">${colsEditHtml(it)}</div>
+   <label class="field"><span>Extra quantity not on the drawings (${esc(unitOf(it))}, added to the total)</span><input class="inp" id="eAdd" type="number" step="any" value="${it.addQty ?? ""}" placeholder="e.g. 2 spare, or a whole quick-quote line"></label>
    <label class="row" style="gap:6px"><input type="checkbox" id="eAlt" ${it.alt ? "checked" : ""}> Price as an alternate (shown separately, not in the base bid)</label>
    <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
@@ -2031,7 +2042,7 @@ function editItem(id) {
   $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
   if ($("#asmStart")) $("#asmStart").onclick = () => { asm = asmStarter(it).map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
   asmPaint();
-  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; if ((pr === "" ? null : +pr) !== it.price) it.priceAt = Date.now(); it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#fRule")) { it.rule = $("#fRule").value; it.every = +$("#fEvery").value || 10; } if (cols().length) { it.cf = it.cf || {}; $$("[data-cf]").forEach(i => { const n = cols()[+i.dataset.cf]; if (i.value.trim()) it.cf[n] = i.value.trim(); else delete it.cf[n]; }); } if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; if ((pr === "" ? null : +pr) !== it.price) it.priceAt = Date.now(); it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); { const ad = $("#eAdd").value; if (ad === "" || !+ad) delete it.addQty; else it.addQty = +ad; } if ($("#fRule")) { it.rule = $("#fRule").value; it.every = +$("#fEvery").value || 10; } if (cols().length) { it.cf = it.cf || {}; $$("[data-cf]").forEach(i => { const n = cols()[+i.dataset.cf]; if (i.value.trim()) it.cf[n] = i.value.trim(); else delete it.cf[n]; }); } if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
   if ($("#fitAdd")) $("#fitAdd").onclick = () => { save(); const k = addFittings(it); changed(); toast(`${k.length} fitting items added under ${it.name}. Set their prices from the Takeoff list.`); };
   $("#cfAdd").onclick = () => { const n = $("#cfNew").value.trim(); if (!n) return; if (!cols().includes(n)) (P().cols ||= []).push(n); save(); editItem(it.id); };
   $("#eSave").onclick = save; $("#eMove").onclick = () => { closeDialog(); moveTakeoff([it.id]); };
@@ -2092,11 +2103,13 @@ async function showHome() {
 async function renderProjList() {
   const el = $("#projList"); el.innerHTML = `<p class="muted">Loading your jobs…</p>`;
   const local = (await IDB.all("projects")) || []; await Cloud.init(); const cloud = await Cloud.list();
-  const map = new Map(); for (const p of local) map.set(p.id, { id: p.id, name: p.name, client: p.quote?.client, updatedAt: p.updatedAt, sheets: p.pages.length, items: p.items.length, local: true, deletedAt: p.deletedAt });
+  const map = new Map(); for (const p of local) map.set(p.id, { id: p.id, name: p.name, client: p.quote?.client, updatedAt: p.updatedAt, sheets: p.pages.length, items: p.items.length, local: true, deletedAt: p.deletedAt, bid: p.bid });
   for (const c of cloud) { const m = map.get(c.id); if (!m || (c.updatedAt || 0) > (m.updatedAt || 0)) map.set(c.id, { ...c, local: !!m }); else m.cloud = true; }
   const list = [...map.values()].filter(p => !p.deletedAt).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  const soon = list.filter(p => p.bid?.due && !["sent", "won", "lost"].includes(p.bid.status) && (new Date(p.bid.due + "T17:00") - Date.now()) / 86400000 <= 3);
+  const ban = $("#bidBanner"); if (ban) { ban.hidden = !soon.length; ban.innerHTML = soon.length ? `<b>${soon.length} bid${soon.length > 1 ? "s" : ""} due within 3 days:</b> ${soon.map(p => `<button class="linkbtn" data-open="${p.id}">${esc(p.name)}</button> (${p.bid.due})`).join(", ")}` : ""; }
   const binN = local.filter(p => p.deletedAt).length, bb = $("#btnBin"); if (bb) bb.textContent = "Recycle bin" + (binN ? ` (${binN})` : "");
-  el.innerHTML = list.length ? list.map(p => `<button class="proj" data-open="${p.id}"><b>${esc(p.name)}</b><span class="muted">${esc(p.client || "No client yet")}</span><span class="row" style="gap:6px"><span class="chip">${p.sheets || 0} sheets</span><span class="chip">${p.items || 0} items</span><span class="chip">${new Date(p.updatedAt || Date.now()).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span><span class="spacer"></span><span class="proj-del" role="button" tabindex="0" data-binjob="${p.id}" title="Delete job (goes to the recycle bin for ${BIN_DAYS} days)" aria-label="Delete job">${svgI("trash", 15)}</span></span></button>`).join("")
+  el.innerHTML = list.length ? list.map(p => `<button class="proj" data-open="${p.id}"><b>${esc(p.name)}</b><span class="muted">${esc(p.client || "No client yet")}</span><span class="row" style="gap:6px"><span class="chip">${p.sheets || 0} sheets</span><span class="chip">${p.items || 0} items</span><span class="chip">${new Date(p.updatedAt || Date.now()).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>${bidChip(p)}<span class="spacer"></span><span class="proj-del" role="button" tabindex="0" data-binjob="${p.id}" title="Delete job (goes to the recycle bin for ${BIN_DAYS} days)" aria-label="Delete job">${svgI("trash", 15)}</span></span></button>`).join("")
     : `<div class="proj" style="cursor:default"><b>No jobs yet</b><span class="muted">Start a blank job or drop drawings above. New to the app? Tap Tutorial.</span></div>`;
 }
 async function openProjectById(id) {
@@ -2367,6 +2380,7 @@ async function exportXlsx() {
   if (labF(p.quote)) bs.push(["Labour difficulty and job conditions", labF(p.quote) + "%"]); if (+p.quote.area) { bs.push(["Building area", p.quote.area + " sq ft"]); add("Sell price per sq ft", t.sub / p.quote.area); }
   sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
   if (zoneNames().length) { const zr = []; for (const it of p.items) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) zr.push([k, it.name, it.kind === "count" || it.kind === "fit" ? q : Math.ceil(q), unitOf(it)]); zr.sort((a, b) => String(a[0]).localeCompare(String(b[0]), "en", { numeric: true })); sheets.push({ name: "By Zone", cols: [22, 34, 9, 7], rows: [H(["Zone", "Item", "Qty", "Unit"]), ...zr] }); }
+  if (p.pages.some(g => g.note)) sheets.push({ name: "Sheet Notes", cols: [22, 80], rows: [H(["Sheet", "Note"]), ...p.pages.filter(g => g.note).map(g => [g.name, g.note])] });
   if ((p.log || []).length) sheets.push({ name: "Change History", cols: [22, 70], rows: [H(["When", "Change"]), ...p.log.map(x => [new Date(x.at).toLocaleString("en-CA"), x.t])] });
   const bk = [H(["Breakdown", "Group", "Material", "Labour hours", "Labour $"])];
   for (const d of ["cat", "sys", "phase", "cc", "sheet"]) { const by = breakdown(d); const vals = Object.entries(by); if (d !== "cat" && d !== "sheet" && vals.length === 1 && /^\(no /.test(vals[0][0])) continue; for (const [k, v] of vals) bk.push([BREAKS[d][0], k, { v: Math.round(v.mat * 100) / 100, s: "money" }, { v: Math.round(v.hrs * 100) / 100, s: "dec" }, { v: Math.round(v.lab * 100) / 100, s: "money" }]); }
@@ -2523,7 +2537,7 @@ function exportMenu(btn) {
   m.innerHTML = `${S.scope !== "all" ? `<label class="row" style="gap:6px;padding:6px 12px;font-size:12.5px"><input type="checkbox" id="xScope" ${S.exportScope === "scope" ? "checked" : ""}> Only the sheets in the Takeoff filter</label>` : ""}<div class="grp">Quote</div><button data-x="qdocx">Quote <small>Word .docx</small></button><button data-x="qpdf">Quote <small>PDF</small></button>
    <div class="grp">Itemized takeoff</div><button data-x="txlsx">Takeoff <small>Excel .xlsx</small></button><button data-x="tdocx">Takeoff <small>Word .docx</small></button><button data-x="tpdf">Takeoff <small>PDF</small></button>
    <div class="grp">Accounting</div><button data-x="qbo">QuickBooks invoice <small>CSV</small></button><div class="adv"><div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button><button data-x="sub">Submittal package <small>Word</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}</div>
-   <div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>
+   ${P().bid?.status === "won" ? '<div class="grp">Won job</div><button data-x="handoff">Handoff package <small>Excel</small></button>' : ""}<div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>
    <div class="adv"><div class="grp">Reuse</div><button data-x="tpl">Save as job template <small>for next time</small></button></div>`;
   document.body.appendChild(m);
   m.onclick = async (e) => { if (e.target.id === "xScope") { S.exportScope = e.target.checked ? "scope" : "all"; e.stopPropagation(); return; } const b = e.target.closest("[data-x]"); if (!b) return; closeMenu(); await runExport(b.dataset.x); };
@@ -2535,7 +2549,7 @@ async function runExport(x) {
     if (!P().items.length && x !== "mpdf") return toast("Count something first — the export is built from your takeoff.");
     if (x === "coxlsx" && !P().baseline) return toast("Lock the bid first in the Quote tab.");
     if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
-    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate, qbo: exportAccountingCsv }[x];
+    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate, qbo: exportAccountingCsv, handoff: exportHandoff }[x];
     await f();
     if (x === "qdocx" || x === "qpdf") { const q = P().quote; if (saveBidCopy("Quote " + (q.quoteNo || "") + " exported · " + dayStr(Date.now()), true) && S.tab === "quote") renderQuote(); }
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
@@ -2687,6 +2701,7 @@ function bidGaps() {
     if (!g.scale && measured) add("No scale", `${g.name} has runs or areas but no scale, so they add nothing.`, { page: i });
     else if (!has && !g.excl && p.pages.length > 1) add("Sheet not touched", `${g.name} has no counts, runs or areas.`, { page: i });
   }
+  for (const r of p.runs) { const v = vdropOf(r); if (v && v.pct > 3) add("Voltage drop", `${itemOf(r.item).name}${r.circuit ? " (" + r.circuit + ")" : ""}: about ${fmt(v.pct, 1)}% drop over ${fmt(v.ft)} ft at ${fmt(v.amps)} A on #${v.awg}. Over 3% (CEC guide): consider the next wire size up.`, { page: p.pages.findIndex(g => g.id === r.page) }); }
   if (!p.quote.client) add("Quote", "The quote has no client name.", { tab: "quote" });
   if (!(+p.quote.rate) ) add("Quote", "Labour rate is $0, so labour adds nothing.", { tab: "quote" });
   return out;
@@ -3036,6 +3051,120 @@ function benchHtml(dim) {
   return `<div class="eyebrow" style="margin-top:6px">Your past jobs: actual vs estimated hours</div><table class="t">${rows.sort((a, b) => b[1].jobs - a[1].jobs).map(([k, v]) => { const r = v.act / v.est; return `<tr><td>${esc(k)} <span class="muted" style="font-size:11.5px">${v.jobs} job${v.jobs > 1 ? "s" : ""}</span></td><td class="r num" style="color:${r > 1.1 ? "var(--bad)" : r < 0.9 ? "var(--ok)" : "inherit"}">${fmt(r * 100)}% of estimate</td></tr>`; }).join("")}</table><p class="muted" style="margin:0;font-size:12px">Over 100% means past jobs took longer than estimated: raise the labour units or add a labour factor for those groups.</p>`;
 }
 
+/* ------------------------- Nov 22 batch 4 ------------------------- */
+/* Grey drawings: show the drawing in light grey so coloured takeoff stands out. */
+let GRAY = false; try { GRAY = localStorage.getItem("tv-gray") === "1"; } catch (e) { }
+function toggleGray() { GRAY = !GRAY; try { localStorage.setItem("tv-gray", GRAY ? "1" : "0"); } catch (e) { } const b = $("#zGray"); if (b) b.classList.toggle("on", GRAY); draw(); }
+
+/* Extra quantity: an allowance added to what's measured on the drawings (also used by quick quotes). */
+const allScope = (pages) => pages.size >= P().pages.length;
+
+/* Bid tracker: status, due date, addenda and notes per job, shown on the Jobs screen. */
+const BID_ST = [["", "No status"], ["invited", "Invited"], ["working", "Working on it"], ["sent", "Sent"], ["won", "Won"], ["lost", "Lost"]];
+function bidHtml() {
+  const b = P().bid || {}, due = b.due ? Math.ceil((new Date(b.due + "T17:00") - Date.now()) / 86400000) : null;
+  return `<details class="adv" ${S.bidOpen || (due != null && due <= 3 && !["sent", "won", "lost"].includes(b.status)) ? "open" : ""} id="bidBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Bid tracking${b.status ? ` · ${BID_ST.find(s => s[0] === b.status)?.[1]}` : ""}${due != null && !["sent", "won", "lost"].includes(b.status) ? ` · <span style="color:${due <= 2 ? "var(--bad)" : "inherit"}">${due < 0 ? "overdue" : due === 0 ? "due today" : "due in " + due + " day" + (due === 1 ? "" : "s")}</span>` : ""}</summary>
+   <div class="grid2" style="margin-top:6px"><label class="field"><span>Status</span><select class="inp" data-bid="status">${BID_ST.map(([k, l]) => `<option value="${k}" ${k === (b.status || "") ? "selected" : ""}>${l}</option>`).join("")}</select></label><label class="field"><span>Bid due</span><input class="inp" data-bid="due" type="date" value="${esc(b.due || "")}"></label></div>
+   <div class="grid2"><label class="field"><span>Addenda received</span><input class="inp" data-bid="addenda" type="number" min="0" value="${b.addenda ?? ""}"></label><label class="field"><span>Bidding to (GC / owner)</span><input class="inp" data-bid="gc" value="${esc(b.gc || "")}"></label></div>
+   <label class="field"><span>RFIs and notes</span><textarea class="inp" data-bid="notes" rows="2">${esc(b.notes || "")}</textarea></label>
+   ${b.status === "won" ? `<button class="btn sm primary" id="bidHandoff" type="button">Handoff package for the PM / foreman (Excel)</button>` : ""}</details>`;
+}
+function bidChip(p) {
+  const b = p.bid || {}; if (!b.status && !b.due) return "";
+  const due = b.due ? Math.ceil((new Date(b.due + "T17:00") - Date.now()) / 86400000) : null, open = !["sent", "won", "lost"].includes(b.status);
+  const lbl = BID_ST.find(s => s[0] === (b.status || ""))?.[1] || "";
+  return `${b.status ? `<span class="chip ${b.status === "won" ? "st-done" : b.status === "lost" ? "" : "blue"}">${lbl}</span>` : ""}${due != null && open ? `<span class="chip ${due <= 2 ? "amber" : ""}">${due < 0 ? "overdue" : due === 0 ? "due today" : "due " + dayStr(new Date(b.due + "T12:00").getTime()).replace(/, \d{4}$/, "")}</span>` : ""}`;
+}
+
+/* Won-job handoff package: one Excel for the PM or foreman. */
+async function exportHandoff() {
+  const p = P(), q = p.quote, t = totals(), H = (a) => a.map(v => ({ v, s: "head" })), all = new Set(p.pages.map(g => g.id));
+  const s1 = [[{ v: p.name + " — Job handoff", s: "title" }], [q.client ? "Client: " + q.client : ""], [q.site ? "Site: " + q.site : ""], ["Quote " + (q.quoteNo || "") + " · total " + money(t.total) + " · " + fmt(t.hrs, 1) + " labour hours"], [],
+    [{ v: "Scope of work", s: "b" }], [q.scope || ""], [], [{ v: "Clarifications", s: "b" }], ...String(q.clar || "").split("\n").filter(Boolean).map(l => [l]), [], [{ v: "Exclusions", s: "b" }], ...String(q.excl || "").split("\n").filter(Boolean).map(l => [l])];
+  if (q.sign?.alts?.length) s1.push([], [{ v: "Alternates accepted by the customer", s: "b" }], ...q.sign.alts.map(a => [a]));
+  else if (t.alts.length) s1.push([], [{ v: "Alternates priced (check which were accepted)", s: "b" }], ...t.alts.map(a => [a.it.name + " — " + fmt(a.qty) + " " + a.unit]));
+  if ((p.bid || {}).notes) s1.push([], [{ v: "Bid notes and RFIs", s: "b" }], ...String(p.bid.notes).split("\n").map(l => [l]));
+  const byPh = {}; for (const it of p.items.filter(i => !i.alt)) { const qq = qtyOf(it, all); if (!qq) continue; const ph = it.phase || "(no phase)"; const qty = it.kind === "count" || it.kind === "fit" ? qq : Math.ceil(qq); (byPh[ph] ||= []).push([ph, it.name, qty, unitOf(it)]); for (const m of (it.asm || []).filter(partOn)) byPh[ph].push([ph, "  · " + m.n, Math.round((+m.q || 0) * qty * 100) / 100, m.u || "ea"]); }
+  const s2 = [H(["Phase / area", "Material", "Qty", "Unit"]), ...Object.keys(byPh).sort().flatMap(k => byPh[k])];
+  const hs = {}; for (const it of p.items.filter(i => !i.alt)) { const qq = qtyOf(it, all); if (!qq || it.labour == null) continue; const k = it.sys || it.cat || "Other"; hs[k] = (hs[k] || 0) + (it.kind === "count" || it.kind === "fit" ? qq : Math.ceil(qq)) * it.labour * (1 + labF(q) / 100); }
+  const s3 = [H(["System", "Budget hours"]), ...Object.entries(hs).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, { v: Math.round(v * 10) / 10, s: "dec" }]), [{ v: "Total", s: "b" }, { v: Math.round(t.hrs * 10) / 10, s: "dec" }]];
+  const sheets = [{ name: "Scope", cols: [90], rows: s1 }, { name: "Material by Phase", cols: [22, 40, 10, 8], rows: s2 }, { name: "Hours by System", cols: [30, 14], rows: s3 }];
+  const co = coRows(); if (co.length) sheets.push({ name: "Change Orders", cols: [36, 10, 10, 10, 14], rows: [H(["Item", "Was", "Now", "Change", "Value"]), ...co.map(r => [r.name, r.was, r.now, r.d, { v: Math.round(r.val * 100) / 100, s: "money" }])] });
+  const notes = p.pages.filter(g => g.note); if (notes.length) sheets.push({ name: "Sheet Notes", cols: [20, 80], rows: [H(["Sheet", "Note"]), ...notes.map(g => [g.name, g.note])] });
+  const photos = p.markups.filter(m => m.type === "photo" && m.note); if (photos.length) sheets.push({ name: "Site Photo Notes", cols: [20, 80], rows: [H(["Sheet", "Photo note"]), ...photos.map(m => [p.pages.find(g => g.id === m.page)?.name || "", m.note])] });
+  saveFile(slug(p.name) + "-handoff.xlsx", await buildXlsx(sheets)); toast("Handoff package saved. Send the marked-up drawings PDF with it (Export menu).");
+}
+
+/* Quick quote: describe the job in words (typed or spoken); the optional AI turns it into items from your price book. */
+function quickQuote() {
+  if (!S.ai) return toast("Quick quote uses the optional AI. Add your AI key in AI settings on the Jobs screen first.");
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  openDialog(`<div class="dlg-h"><h3>Quick quote from a description</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Say or type the job, e.g. "6 pot lights, 2 GFCIs in the kitchen, 40 feet of 14/2, one 20 amp circuit". Items are picked from your price book and this job first, and you check every line before it's added.</p>
+   <textarea class="inp" id="qqText" rows="5" placeholder="Describe the work…"></textarea>${SR ? `<button class="btn sm" id="qqMic" type="button">🎤 Speak</button>` : ""}<div id="qqOut"></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="qqGo">Make line items</button></div>`);
+  if (SR) { let rec = null; $("#qqMic").onclick = () => { if (rec) { rec.stop(); return; } rec = new SR(); rec.lang = "en-CA"; rec.continuous = true; rec.interimResults = false; const base = $("#qqText").value; let said = ""; rec.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) said += e.results[i][0].transcript + " "; $("#qqText").value = (base + " " + said).trim(); }; rec.onend = () => { rec = null; if ($("#qqMic")) $("#qqMic").textContent = "🎤 Speak"; }; rec.onerror = () => toast("The microphone isn't available. Type the job instead."); rec.start(); $("#qqMic").textContent = "■ Stop"; }; }
+  $("#qqGo").onclick = async () => {
+    const text = $("#qqText").value.trim(); if (!text) return;
+    const names = [...new Set([...P().items.map(i => i.name), ...Object.values(PB).map(e => e.name)])].slice(0, 400);
+    $("#qqGo").disabled = true; $("#qqGo").textContent = "Working…";
+    let j; try { j = await S.ai.json(`A ${tr().name.toLowerCase()} contractor in Ontario described a small job. Turn it into takeoff lines. Prefer these existing item names exactly when they fit: ${JSON.stringify(names)}. Reply with only JSON: {"lines":[{"name": string, "qty": number, "kind": "count"|"length"|"area", "existing": true|false}]}. Lengths in ${P().units === "m" ? "metres" : "feet"}, areas in ${P().units === "m" ? "square metres" : "square feet"}. Don't invent prices.\n\nJOB: ${text}`, { modelTier: "default" }); }
+    catch (e) { $("#qqGo").disabled = false; $("#qqGo").textContent = "Make line items"; return toast(aiErr(e)); }
+    const lines = (j?.lines || []).filter(l => l?.name && +l.qty > 0);
+    $("#qqGo").disabled = false; $("#qqGo").textContent = "Add these lines";
+    $("#qqOut").innerHTML = lines.length ? `<table class="t"><tr><th style="text-align:left">Item</th><th class="r">Qty</th><th class="r">Price</th></tr>${lines.map((l, i) => { const e = P().items.find(x => pbKey(x.name) === pbKey(l.name)) || PB[pbKey(l.name)]; const pr = e ? (e.id ? priceOf(e) : e.price) : null; return `<tr><td><input class="inp" data-qqn="${i}" value="${esc(l.name)}"></td><td class="r"><input class="inp num" data-qqq="${i}" type="number" step="any" value="${l.qty}" style="width:76px"></td><td class="r num">${pr != null ? money(pr) : '<span class="muted">no price</span>'}</td></tr>`; }).join("")}</table>` : `<p class="muted">No lines came back. Add more detail and try again.</p>`;
+    $("#qqGo").onclick = () => {
+      if (P().locked) return lockGuard(); commit(); let n = 0;
+      lines.forEach((l, i) => { const name = $(`[data-qqn="${i}"]`).value.trim(), qty = +$(`[data-qqq="${i}"]`).value; if (!name || !(qty > 0)) return;
+        let it = P().items.find(x => pbKey(x.name) === pbKey(name)); if (!it) { const pb = PB[pbKey(name)]; it = newItem({ name, kind: ["count", "length", "area"].includes(l.kind) ? l.kind : (pb?.kind || "count"), cat: pb?.cat || CATS[0] }); P().items.push(it); }
+        it.addQty = (+it.addQty || 0) + qty; n++; });
+      closeDialog(); changed(); toast(`${n} lines added as extra quantities (shown as "+ extra" on each item). Change them in each item.`);
+    };
+  };
+}
+
+/* Voltage drop on circuits: flags branch circuits whose run is long for the wire size. */
+const AWG_R = { 14: 3.07, 12: 1.93, 10: 1.21, 8: 0.764, 6: 0.491, 4: 0.308, 3: 0.245, 2: 0.194 }; // ohms per 1000 ft, copper
+const AWG_A = { 14: 15, 12: 20, 10: 30, 8: 40, 6: 55, 4: 70, 3: 85, 2: 95 };
+function vdropOf(r) {
+  const it = itemOf(r.item); if (!it) return null; const m = String(it.name).match(/#\s?(14|12|10|8|6|4|3|2)\b|\b(14|12|10)\/[23]\b|\b(14|12|10|8|6)\s?awg/i); if (!m) return null;
+  const awg = +(m[1] || m[2] || m[3]); const pg = P().pages.find(g => g.id === r.page), L = runLen(r, pg); if (L == null) return null;
+  const ft = L / M_PER_FT, amps = AWG_A[awg] * 0.8, v = 120, vd = 2 * ft * amps * AWG_R[awg] / 1000; return { awg, ft, amps, pct: vd / v * 100 };
+}
+
+/* Plan vs schedule: box a fixture or equipment schedule; the AI reads tags and quantities, and the app checks the plans. */
+async function checkSchedule(pg, bx, by, bw, bh) {
+  if (!S.ai || !S.aiImages) return toast("This check uses the optional AI with pictures. Turn it on in AI settings.");
+  busy(true, "Reading the schedule", "");
+  let j; try { const r = await renderPage(pg); const c = cropCanvas(r.canvas, bx * r.ppt, by * r.ppt, bw * r.ppt, bh * r.ppt); j = await S.ai.json(`This image is a schedule table cropped from a ${tr().name.toLowerCase()} construction drawing (fixture, panel, equipment or device schedule). List every tag/type mark in it and the quantity if the table has one. Reply with only JSON: {"rows":[{"tag": string, "desc": string, "qty": number|null}]}.`, { images: [await toBlob(scaleCanvas(c, 1800))], modelTier: "default" }); }
+  catch (e) { busy(false); return toast(aiErr(e)); }
+  const rows = (j?.rows || []).filter(r => r?.tag); const out = [];
+  for (const row of rows) {
+    const tag = String(row.tag).trim(), re = new RegExp("(^|[^A-Z0-9])" + tag.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "($|[^A-Z0-9])"); let onPlans = 0;
+    for (const g of P().pages) for (const t of await pageText(g)) { if (g.id === pg.id && t.x >= bx && t.x <= bx + bw && t.y >= by && t.y <= by + bh) continue; if (re.test(t.s.toUpperCase())) onPlans++; }
+    const it = P().items.find(i => re.test(i.name.toUpperCase())); const counted = it ? qtyOf(it, new Set(P().pages.map(g => g.id))) : null;
+    out.push({ tag, desc: row.desc || "", sched: row.qty, onPlans, counted, item: it?.name });
+  }
+  busy(false);
+  openDialog(`<div class="dlg-h"><h3>Plans vs schedule</h3><span class="chip">${out.length} tags</span></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Tags read from the schedule by AI, then searched as text on every sheet. A tag that's on the schedule but not on the plans (or the other way) is worth a look. Scanned sheets have no text to search.</p>
+   <div style="max-height:52vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Tag</th><th class="r">Schedule</th><th class="r">Tags on plans</th><th class="r">Your count</th></tr>${out.map(r => { const bad = r.onPlans === 0 || (r.sched != null && r.counted != null && r.sched !== r.counted) || (r.counted != null && r.onPlans && r.counted !== r.onPlans); return `<tr style="${bad ? "background:var(--amber-soft)" : ""}"><td><b>${esc(r.tag)}</b><div class="muted" style="font-size:11.5px">${esc(r.desc).slice(0, 60)}</div></td><td class="r num">${r.sched ?? "—"}</td><td class="r num">${r.onPlans}</td><td class="r num">${r.counted ?? '<span class="muted">no item</span>'}</td></tr>`; }).join("")}</table></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+}
+
+/* Ask the AI about a boxed part of a sheet. */
+async function askAboutBox(pg, bx, by, bw, bh) {
+  if (!S.ai || !S.aiImages) return toast("This uses the optional AI with pictures. Turn it on in AI settings.");
+  const r = await renderPage(pg), c = cropCanvas(r.canvas, bx * r.ppt, by * r.ppt, bw * r.ppt, bh * r.ppt);
+  openDialog(`<div class="dlg-h"><h3>Ask about this part of ${esc(pg.name)}</h3></div><div class="dlg-b"><img src="${scaleCanvas(c, 900).toDataURL()}" alt="Boxed area" style="max-height:30vh;object-fit:contain;border:1px solid var(--line);border-radius:6px;background:#fff">
+   <input class="inp" id="abQ" placeholder="e.g. What fixtures are in this room? Is this a rated wall?"><div id="abA" style="white-space:pre-wrap;font-size:13.5px"></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button><button class="btn" id="abPin" type="button" hidden>Pin answer on the drawing</button><button class="btn primary" id="abGo">Ask</button></div>`);
+  $("#abQ").focus(); let ans = "";
+  const go = async () => { const q = $("#abQ").value.trim(); if (!q) return; $("#abGo").disabled = true; $("#abA").textContent = "Thinking…";
+    try { const j = await S.ai.json(`This image is a crop from a ${tr().name.toLowerCase()} construction drawing in Ontario, Canada. Answer the question about what's shown, briefly and plainly; say if something can't be told from the drawing. Reply with only JSON: {"answer": string}.\n\nQUESTION: ${q}`, { images: [await toBlob(scaleCanvas(c, 1600))], modelTier: "default" }); ans = String(j?.answer || ""); $("#abA").textContent = ans; $("#abPin").hidden = !ans; }
+    catch (e) { $("#abA").textContent = aiErr(e); } $("#abGo").disabled = false; };
+  $("#abGo").onclick = go; $("#abQ").onkeydown = (e) => { if (e.key === "Enter") go(); };
+  $("#abPin").onclick = () => { commit(); P().markups.push({ id: uid(), page: pg.id, type: "callout", box: [bx + bw / 2, by + bh / 2, bx + bw + 20, by], text: ans.slice(0, 220), color: "#8E4EC6", at: Date.now() }); closeDialog(); changed(); toast("Answer pinned as a callout on the drawing."); };
+}
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
@@ -3050,14 +3179,14 @@ function bind() {
   const hd = $("#homeDrop"); ["dragenter", "dragover"].forEach(ev => hd.addEventListener(ev, e => { e.preventDefault(); hd.classList.add("over"); })); ["dragleave", "drop"].forEach(ev => hd.addEventListener(ev, e => { e.preventDefault(); hd.classList.remove("over"); }));
   hd.addEventListener("drop", e => addFiles(e.dataTransfer.files));
   const vw = $("#viewer"); vw.addEventListener("dragover", e => e.preventDefault()); vw.addEventListener("drop", e => { e.preventDefault(); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
-  $("#btnBin").onclick = openBin;
+  $("#btnBin").onclick = openBin; $("#bidBanner").onclick = (e) => { const b = e.target.closest("[data-open]"); if (b) openProjectById(b.dataset.open); };
   $("#projList").onclick = (e) => { const d = e.target.closest("[data-binjob]"); if (d) { e.stopPropagation(); return binJob(d.dataset.binjob); } const b = e.target.closest("[data-open]"); if (b) openProjectById(b.dataset.open); };
   $("#pname").onchange = (e) => { P().name = e.target.value.trim() || "Untitled job"; markDirty(); };
   $("#btnUndo").onclick = undo; $("#btnRedo").onclick = redo; $("#btnExport").onclick = (e) => { e.stopPropagation(); exportMenu(e.currentTarget); };
   $("#btnRail").onclick = () => $("#rail").classList.toggle("open"); $("#btnSide").onclick = () => $("#side").classList.toggle("open");
   $("#togRail").onclick = () => togglePane("rail"); $("#togSide").onclick = () => togglePane("side"); applyPanes();
   $("#btnCompare").onclick = compareSheets; $("#btnCopySh").onclick = copyToSheets; $("#busyStop").onclick = () => stopMatching();
-  $("#zIn").onclick = () => zoomAt(1.25); $("#zOut").onclick = () => zoomAt(0.8); $("#zFit").onclick = fit;
+  $("#zIn").onclick = () => zoomAt(1.25); $("#zOut").onclick = () => zoomAt(0.8); $("#zFit").onclick = fit; $("#zGray").onclick = toggleGray; $("#zGray").classList.toggle("on", GRAY);
   $("#toolbar").onclick = (e) => { const b = e.target.closest("[data-tool]"); if (b) setTool(b.dataset.tool); };
   $("#subbar").onchange = (e) => {
     if (e.target.id === "runSel") { if (e.target.value === "__new") { addManualItem(); $("#mKind").value = "length"; } else S.measureItem = e.target.value; }
@@ -3087,7 +3216,7 @@ function bind() {
     const b = e.target.closest("[data-page]"); if (b) { openPage(+b.dataset.page); $("#rail").classList.remove("open"); }
   };
   $("#sheetList").onchange = (e) => { if (e.target.id === "shFilter") { S.sheetFilter = e.target.value; renderSheets(); } };
-  $("#sheetList").ondblclick = (e) => { if (e.target.closest("[data-shst],#shFilter")) return; const b = e.target.closest("[data-page]"); if (!b) return; const g = P().pages[+b.dataset.page]; openDialog(`<div class="dlg-h"><h3>Rename sheet</h3></div><div class="dlg-b"><input class="inp" id="shNm" value="${esc(g.name)}"></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="shOk">Save</button></div>`); $("#shOk").onclick = () => { commit(); g.name = $("#shNm").value.trim() || g.name; closeDialog(); changed({ sheets: true }); }; };
+  $("#sheetList").ondblclick = (e) => { if (e.target.closest("[data-shst],#shFilter")) return; const b = e.target.closest("[data-page]"); if (!b) return; const g = P().pages[+b.dataset.page]; openDialog(`<div class="dlg-h"><h3>Sheet name and note</h3></div><div class="dlg-b"><input class="inp" id="shNm" value="${esc(g.name)}"><label class="field"><span>Note for this sheet (goes in the Excel and handoff exports)</span><textarea class="inp" id="shNote" rows="3">${esc(g.note || "")}</textarea></label></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="shOk">Save</button></div>`); $("#shOk").onclick = () => { commit(); g.note = $("#shNote").value.trim() || undefined; g.name = $("#shNm").value.trim() || g.name; closeDialog(); changed({ sheets: true }); }; };
   $$(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   $("#pane-takeoff").onclick = (e) => {
     const t = (a) => e.target.closest(`[data-${a}]`);
@@ -3100,6 +3229,7 @@ function bind() {
     if (e.target.id === "bulkOn") { S.bulk = true; S.bsel.clear(); return renderTakeoff(); }
     if (e.target.id === "btnGaps") return showBidGaps();
     if (e.target.id === "btnOrder") return sortItems();
+    if (e.target.id === "btnQQ") return quickQuote();
     if (t("bk")) { const a = t("bk").dataset.bk; if (a === "all") P().items.filter(i => !S.itemQ || i.name.toLowerCase().includes(S.itemQ.toLowerCase())).forEach(i => S.bsel.add(i.id)); if (a === "none") S.bsel.clear(); if (a === "done") { S.bulk = false; S.bsel.clear(); } if (a === "edit") return bulkEdit(); if (a === "move") return moveTakeoff([...S.bsel]); return renderTakeoff(); }
     if (S.bulk && t("item")) { const id = t("item").dataset.item; S.bsel.has(id) ? S.bsel.delete(id) : S.bsel.add(id); return renderTakeoff(); }
     const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure" && S.tool !== "circuit") setTool("measure"); else renderSubbar(); } else if (it.kind === "area") { S.areaItem = id; if (S.tool !== "area") setTool("area"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
@@ -3113,9 +3243,10 @@ function bind() {
     const er = e.target.closest("[data-editrun]"); if (er) return editRun(er.dataset.editrun);
     const r = e.target.closest("[data-mk],[data-run]"); if (r) { const mk = P().markups.find(m => m.id === r.dataset.mk) || P().runs.find(m => m.id === r.dataset.run); const i = P().pages.findIndex(g => g.id === mk.page); S.sel = { type: r.dataset.mk ? "markup" : "run", id: mk.id }; (i !== S.pageIdx ? openPage(i) : Promise.resolve()).then(() => { const b = mk.pts ? [mk.pts[0][0], mk.pts[0][1]] : [mk.box[0], mk.box[1]]; centerOn(b[0], b[1]); renderMarkups(); }); }
   };
-  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; if (e.target.id === "copiesBox") S.copiesOpen = e.target.open; }, true);
+  $("#pane-quote").addEventListener("toggle", (e) => { if (e.target.id === "bsBox") S.breakOpen = e.target.open; if (e.target.id === "condBox") S.condOpen = e.target.open; if (e.target.id === "logBox") S.logOpen = e.target.open; if (e.target.id === "copiesBox") S.copiesOpen = e.target.open; if (e.target.id === "bidBox") S.bidOpen = e.target.open; }, true);
   $("#pane-quote").addEventListener("change", (e) => { const d = e.target.dataset, q = P().quote;
-    if (d.cond) { (q.conds ||= {})[d.cond] = e.target.checked; S.condOpen = true; }
+    if (d.bid) { const b = P().bid ||= {}; const v = e.target.value; if (d.bid === "addenda") b.addenda = v === "" ? undefined : +v; else b[d.bid] = v || undefined; if (d.bid === "status" && v && !b.since) b.since = Date.now(); S.bidOpen = true; }
+    else if (d.cond) { (q.conds ||= {})[d.cond] = e.target.checked; S.condOpen = true; }
     else if (d.condv) { (q.condV ||= {})[d.condv] = +e.target.value || 0; S.condOpen = true; }
     else if (d.pkn != null) q.pkgs[+d.pkn].n = e.target.value;
     else if (d.pkf != null) q.pkgs[+d.pkf].f = e.target.value;
@@ -3124,8 +3255,8 @@ function bind() {
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
-  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && (s.dataset.sug === "__box" || s.dataset.sug === "__sched")) { setTool(s.dataset.sug === "__box" ? "aibox" : "aisched"); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
   window.addEventListener("keydown", (e) => {
