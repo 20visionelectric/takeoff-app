@@ -130,6 +130,7 @@ h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;margi
 .tool span{font-size:11px;font-weight:500}
 .tool:hover{background:var(--panel-2);color:var(--ink)}
 .tool.on{background:var(--blue);color:#fff}
+.toolbar.compact .tool{min-width:36px;padding:7px 6px}.toolbar.compact .tool span{display:none}
 .tsep{width:1px;background:var(--line);margin:4px 3px}
 .zoombar{position:absolute;right:10px;bottom:10px;display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px;box-shadow:var(--shadow);z-index:3;align-items:center}
 .zoombar .num{font-size:12px;min-width:46px;text-align:center}
@@ -376,7 +377,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.12.0";
+const V = "4.13.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -608,6 +609,8 @@ const ICON = {
   measure: '<path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>',
   circuit: '<rect x="3" y="3" width="6" height="8" rx="1"/><path d="M9 7h6v10h4"/><circle cx="15" cy="7" r="1.6"/><circle cx="19" cy="17" r="1.6"/>',
   area: '<path d="M4 7l6-3 10 5-3 11-11-2z"/>',
+  zone: '<path d="M4 6l7-2 9 4-2 11-12-1z" stroke-dasharray="3 2.5"/><path d="M9 11h6M9 14h4"/>',
+  callout: '<circle cx="5" cy="19" r="1.6"/><path d="M6.2 17.8L11 13"/><rect x="11" y="4" width="10" height="9" rx="1.5"/><path d="M13.5 7.5h5M13.5 10h3.5"/>',
   scale: '<path d="M3 12h18M3 9v6M21 9v6M8 11v2M13 11v2M18 11v2"/>',
   cloud: '<path d="M6 17a4 4 0 01-.5-8 5 5 0 019.6-1.5A4 4 0 0118 17z"/>',
   text: '<path d="M5 6h14M12 6v13M9 19h6"/>',
@@ -1047,6 +1050,8 @@ function drawMarkup(g, mk, px, sel) {
   else if (mk.type === "photo") { const b = mk.box, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, r = 11 * px; const n = P().markups.filter(m => m.type === "photo" && m.page === mk.page).indexOf(mk) + 1;
     g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = "#13203A"; g.fill(); g.lineWidth = 2 * px; g.strokeStyle = "#fff"; g.stroke(); g.fillStyle = "#fff"; g.fillRect(cx - 6 * px, cy - 3.5 * px, 12 * px, 8 * px); g.beginPath(); g.arc(cx, cy + .5 * px, 2.6 * px, 0, 7); g.fillStyle = "#13203A"; g.fill();
     g.font = `bold ${10 * px}px system-ui,sans-serif`; g.fillStyle = "#13203A"; g.fillText("Photo " + n + (mk.note ? ": " + String(mk.note).slice(0, 40) : ""), cx + r + 3 * px, cy + 3.5 * px); }
+  else if (mk.type === "zone" && mk.pts) drawZone(g, mk, px);
+  else if (mk.type === "callout" && mk.box) drawCallout(g, mk, px);
   else if (mk.type === "area" && mk.pts) { if (mk.deduct) g.setLineDash([6 * px, 4 * px]); g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], (mk.deduct ? "DEDUCT − " : "") + areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
   if (sel) { g.setLineDash([4 * px, 3 * px]); g.strokeStyle = "#13203A"; g.lineWidth = 1 * px; const b = markupBounds(mk); g.strokeRect(b[0] - 4 * px, b[1] - 4 * px, b[2] + 8 * px, b[3] + 8 * px); g.setLineDash([]); }
   g.restore();
@@ -1060,14 +1065,14 @@ function drawOverlayUI(g) {
   const px = 1 / S.zoom, d = S.draft; if (!d) return;
   g.save();
   if (d.box) { const [x1, y1, x2, y2] = d.box; const col = { count: "#1554D1", legend: "#8E4EC6", exclude: "#5A6A82" }[d.kind] || S.markStyle.color;
-    if (["rect", "cloud", "highlight", "arrow"].includes(d.kind)) drawMarkup(g, { type: d.kind, box: d.box, color: S.markStyle.color }, px, false);
+    if (["rect", "cloud", "highlight", "arrow", "callout"].includes(d.kind)) drawMarkup(g, { type: d.kind === "callout" ? "arrow" : d.kind, box: d.box, color: S.markStyle.color }, px, false);
     else { g.strokeStyle = col; g.lineWidth = 2 * px; g.setLineDash([6 * px, 4 * px]); g.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); g.fillStyle = col + "18"; g.fillRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)); } }
   if (d.pts) {
-    const col = d.kind === "measure" ? (itemOf(S.measureItem)?.color || "#1554D1") : d.kind === "area" ? S.markStyle.color : "#E8590C";
+    const col = d.kind === "measure" ? (itemOf(S.measureItem)?.color || "#1554D1") : d.kind === "area" ? S.markStyle.color : d.kind === "zone" ? "#8E4EC6" : "#E8590C";
     const pts = d.hover ? [...d.pts, d.hover] : d.pts;
-    g.strokeStyle = col; g.lineWidth = 3 * px; g.setLineDash(d.kind === "scale" ? [6 * px, 4 * px] : []); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if (d.kind === "area" && pts.length > 2) g.closePath(); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = col; g.lineWidth = 3 * px; g.setLineDash(d.kind === "scale" ? [6 * px, 4 * px] : []); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if ((d.kind === "area" || d.kind === "zone") && pts.length > 2) g.closePath(); g.stroke(); g.setLineDash([]);
     for (const p of d.pts) { g.fillStyle = "#fff"; g.beginPath(); g.arc(p[0], p[1], 4 * px, 0, 7); g.fill(); g.strokeStyle = col; g.stroke(); }
-    if (pts.length > 1) { const L = d.kind === "area" ? areaTxt(polyArea(pts), page()) : (d.kind === "scale" ? fmt(Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), 0) + " pt" : lenTxt(realLen(pts, page()))); const q = pts[pts.length - 1]; label(g, q[0] + 30 * px, q[1] - 16 * px, L, col, px); }
+    if (pts.length > 1) { const L = d.kind === "area" || d.kind === "zone" ? areaTxt(polyArea(pts), page()) : (d.kind === "scale" ? fmt(Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), 0) + " pt" : lenTxt(realLen(pts, page()))); const q = pts[pts.length - 1]; label(g, q[0] + 30 * px, q[1] - 16 * px, L, col, px); }
   }
   g.restore();
 }
@@ -1148,11 +1153,12 @@ async function guessScale(pp) {
 
 /* ------------------------- Tools ------------------------- */
 const TOOLS = [
-  ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["circuit", "Circuit", "U"], ["area", "Area", "A"], ["scale", "Scale", "S"], "|",
-  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], ["photo", "Photo", "O"], "|", ["exclude", "Ignore", "X"],
+  ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["circuit", "Circuit", "U"], ["area", "Area", "A"], ["zone", "Zone", "Z"], ["scale", "Scale", "S"], "|",
+  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["callout", "Callout", "Q"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], ["photo", "Photo", "O"], "|", ["exclude", "Ignore", "X"],
 ];
+function fitToolbar() { const tb = $("#toolbar"); if (!tb) return; tb.classList.remove("compact"); if (tb.scrollWidth > tb.clientWidth + 2) tb.classList.add("compact"); }
 function renderToolbar() {
-  $("#toolbar").innerHTML = TOOLS.map(t => t === "|" ? '<span class="tsep"></span>' : `<button class="tool ${S.tool === t[0] ? "on" : ""}" data-tool="${t[0]}" title="${t[1]} (${t[2]})">${svgI(t[0] === "measure" ? "measure" : t[0])}<span>${t[1]}</span></button>`).join("");
+  $("#toolbar").innerHTML = TOOLS.map(t => t === "|" ? '<span class="tsep"></span>' : `<button class="tool ${S.tool === t[0] ? "on" : ""}" data-tool="${t[0]}" title="${t[1]} (${t[2]})">${svgI(t[0] === "measure" ? "measure" : t[0])}<span>${t[1]}</span></button>`).join(""); requestAnimationFrame(fitToolbar);
 }
 function setTool(t) { S.tool = t; S.draft = null; closePop(); renderToolbar(); renderSubbar(); updHint(); draw(); cv().style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; }
 function updHint() {
@@ -1167,6 +1173,8 @@ function updHint() {
     measure: `Click along the conduit or cable route. <b>Double-click</b> or Enter to finish, Esc to cancel.` + noScale,
     circuit: `<b>Click the panel</b>, then click each device on the circuit (clicks snap to counted ticks). <b>Double-click</b> or Enter to finish. The wire is routed square to the walls, with a drop at every device.` + noScale,
     area: `Click the corners of the area. <b>Double-click</b> to finish.` + noScale,
+    zone: `Click the corners of a zone (a unit, floor area or phase). <b>Double-click</b> to finish, then name it. Use the same name on every sheet.`,
+    callout: `<b>Drag</b> from the spot you mean to where the note should sit, then type the note.`,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
@@ -1201,7 +1209,7 @@ function onDown(e) {
   const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, [x, y] = toPt(sx, sy);
   ptr = { sx, sy, x, y, moved: false, panning: e.button === 1 || S.tool === "pan" || e.button === 2 || (S.tool === "select" && !hitAnything(x, y)) || spaceDown, px: S.panX, py: S.panY };
   if (ptr.panning) { cv().style.cursor = "grabbing"; return; }
-  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
+  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow", "callout"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
   if (S.tool === "select") { const h = hitAnything(x, y); S.sel = h; if (h?.type === "markup") ptr.moveMk = { id: h.id, x, y, orig: JSON.stringify(itemMk(h.id)) }; renderSide(); draw(); }
 }
 const itemMk = (id) => P().markups.find(m => m.id === id);
@@ -1218,7 +1226,7 @@ function onUp(e) {
   if (!ptr) return; const p = ptr; ptr = null;
   const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top; let [x, y] = toPt(sx, sy);
   cv().style.cursor = S.tool === "pan" ? "grab" : S.tool === "select" ? "default" : "crosshair";
-  if (p.panning) { if (!p.moved && S.tool === "select") { S.sel = null; renderSide(); draw(); } return; }
+  if (p.panning) { if (!p.moved && S.tool === "select") { S.sel = null; renderSide(); draw(); sheetLinkAt(x, y); } return; }
   if (p.moveMk) { if (!p.moved) { const mk0 = itemMk(p.moveMk.id); if (mk0?.type === "photo") return showPhoto(mk0); } if (p.moved) { const mk = itemMk(p.moveMk.id), now = JSON.stringify(mk); Object.assign(mk, JSON.parse(p.moveMk.orig)); commit(); Object.assign(mk, JSON.parse(now)); changed(); } return; }
   const pg = page();
   if (S.draft?.box) {
@@ -1228,12 +1236,13 @@ function onUp(e) {
     if (small) { if (kind === "exclude") { const i = (pg.excl || []).findIndex(e => x >= e[0] && x <= e[0] + e[2] && y >= e[1] && y <= e[1] + e[3]); if (i >= 0) { commit(); pg.excl.splice(i, 1); changed(); } } draw(); return; }
     if (kind === "legend") return startLegend(bx, by, bw, bh);
     if (kind === "exclude") { commit(); (pg.excl ||= []).push([bx, by, bw, bh]); changed(); return; }
+    if (kind === "callout") { S.draft = { kind: "callout", box: [x1, y1, x, y] }; draw(); return placeCallout([x1, y1, x, y], sx, sy); }
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
   }
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "photo") return addPhoto(pg, x, y);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
-  if (["measure", "area", "scale", "circuit"].includes(S.tool)) {
+  if (["measure", "area", "scale", "circuit", "zone"].includes(S.tool)) {
     if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
     if (S.tool === "circuit") { const tol = 14 / S.zoom; let best = null, bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = m; } } if (best) { x = best.x; y = best.y; } S.draft.snaps.push(!!best); }
     const last = S.draft.pts[S.draft.pts.length - 1];
@@ -1261,6 +1270,7 @@ function finishDraft() {
     S.draft = null; changed(); renderSubbar();
     const L = runLen(P().runs[P().runs.length - 1], pg); toast(`Circuit ${n}: ${devices} device${devices === 1 ? "" : "s"}, ${L == null ? "set the sheet scale to get the length" : lenTxt(L) + " of wire including drops and waste"}.`);
   } else if (d.kind === "area" && d.pts.length >= 3) { const ai = itemOf(S.areaItem); commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, deduct: ai && S.areaDeduct ? true : undefined, at: Date.now() }); S.draft = null; changed(); if (ai && !pg.scale) toast("Area saved. Set this sheet's scale to get its size."); }
+  else if (d.kind === "zone" && d.pts.length >= 3) finishZone(d.pts);
   else { S.draft = null; draw(); }
 }
 S.txt = {};
@@ -1356,7 +1366,7 @@ const pbKey = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").t
 function pbSave() { IDB.put("kv", "pricebook", PB); }
 function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); for (const k of ["cc", "mfr", "model", "spec"]) if (!it[k] && e[k]) it[k] = e[k]; if (it.price != null && !it.priceAt) it.priceAt = e.at || Date.now(); return true; }
 function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], cc: it.cc, mfr: it.mfr, model: it.model, spec: it.spec, at: it.priceAt || Date.now() }; pbSave(); }
-const asmCost = (it) => (it.asm || []).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0);
+const asmCost = (it) => (it.asm || []).filter(partOn).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0);
 const priceOf = (it) => it.asm?.length && it.asm.some(m => m.c !== "" && m.c != null) ? asmCost(it) + (+it.extra || 0) : it.price;
 const ASM_STARTERS = {
   "Receptacles": [["Device box", 1, "ea"], ["Receptacle device", 1, "ea"], ["Cover plate", 1, "ea"], ["#14/2 or #12/2 wire", 15, "ft"], ["Connectors & screws", 1, "lot"]],
@@ -1637,6 +1647,7 @@ function hideCompareBar() { if ($("#cmpExit")) { $("#subbar").hidden = true; $("
 /* ------------------------- Totals ------------------------- */
 function pagesInScope() { const p = P(); if (S.scope === "page") return new Set([page()?.id]); if (S.scope.startsWith("set:")) { const set = S.scope.slice(4); return new Set(p.pages.filter(g => docOf(g).set === set).map(g => g.id)); } return new Set(p.pages.map(g => g.id)); }
 function qtyOf(it, pages = pagesInScope()) {
+  if (it.kind === "fit") return fitQty(it, pages);
   if (it.kind === "count") return P().marks.filter(m => m.item === it.id && pages.has(m.page)).length;
   if (it.kind === "area") { let A = 0; for (const mk of P().markups) if (mk.type === "area" && mk.item === it.id && pages.has(mk.page)) { const pg = P().pages.find(g => g.id === mk.page); if (pg?.scale) A += (mk.deduct ? -1 : 1) * polyArea(mk.pts) * pg.scale.m * pg.scale.m; } A = Math.max(0, A); A *= 1 + (it.waste || 0) / 100; return P().units === "m" ? A : A / (M_PER_FT * M_PER_FT); }
   let L = 0; for (const r of P().runs) if (r.item === it.id && pages.has(r.page)) { const pg = P().pages.find(g => g.id === r.page); const l = runLen(r, pg); if (l != null) L += l; }
@@ -1694,9 +1705,9 @@ function setDiff(a, b) {
 }
 function renderMarkups() {
   const el = $("#pane-markups"), mks = P().markups;
-  const nm = { cloud: "Revision cloud", text: "Text note", arrow: "Arrow", rect: "Box", highlight: "Highlight", stamp: "Stamp", area: "Area" };
+  const nm = { cloud: "Revision cloud", text: "Text note", arrow: "Arrow", rect: "Box", highlight: "Highlight", stamp: "Stamp", area: "Area", zone: "Zone", callout: "Callout", photo: "Site photo" };
   el.innerHTML = `<div class="row" style="justify-content:space-between"><b class="eyebrow">Markups list</b><span class="chip">${mks.length}</span></div>` +
-    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) + " · perimeter " + lenTxt(realLen([...mk.pts, mk.pts[0]], pg)) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
+    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "zone" ? (mk.name || "") : mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) + " · perimeter " + lenTxt(realLen([...mk.pts, mk.pts[0]], pg)) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
       : `<p class="muted" style="margin:0;line-height:1.55">Clouds, notes, arrows, boxes, highlights, stamps and areas you draw show up here. They print on the marked-up drawings export.</p>`) +
     `<div class="cat"><div class="cat-h"><b>Runs</b></div>${P().runs.length ? P().runs.map(r => { const it = itemOf(r.item), pg = P().pages.find(g => g.id === r.page); return `<div class="mk-row" data-run="${r.id}"><span class="dot" style="background:${it?.color}"></span><span><b style="font-weight:600">${esc(it?.name || "Run")}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted num" style="font-size:12px">${lenTxt(runLen(r, pg))} · ${bends(r.pts)} bends · ${r.drops || 0} drops</span></span><button class="btn ghost sm" data-editrun="${r.id}">Edit</button></div>`; }).join("") : `<p class="muted" style="margin:6px 0">No runs yet. Use <b>Run</b> to trace conduit or cable.</p>`}</div>`;
 }
@@ -1739,10 +1750,11 @@ function renderQuote() {
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
 }
 
-const BREAKS = { cat: ["Category", it => it.cat || "Other"], sys: ["System", it => it.sys || "(no system)"], phase: ["Phase / area", it => it.phase || "(no phase)"], cc: ["Cost code", it => it.cc || "(no cost code)"], sheet: ["Sheet", null], set: ["Drawing set", null] };
+const BREAKS = { cat: ["Category", it => it.cat || "Other"], sys: ["System", it => it.sys || "(no system)"], phase: ["Phase / area", it => it.phase || "(no phase)"], cc: ["Cost code", it => it.cc || "(no cost code)"], sheet: ["Sheet", null], set: ["Drawing set", null], zone: ["Zone", null] };
 function breakdown(dim) {
   const p = P(), by = {};
   const add = (k, c) => { const e = by[k] ||= { mat: 0, hrs: 0, lab: 0 }; e.mat += c.matM; e.hrs += c.hrs; e.lab += c.lab; };
+  if (dim === "zone") { for (const it of p.items.filter(i => !i.alt)) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) add(k, lineCost(it, q)); return by; }
   if (dim === "sheet" || dim === "set") { for (const g of p.pages) { const one = new Set([g.id]); const k = dim === "sheet" ? g.name : (docOf(g)?.set || "-"); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, one); if (q) add(k, lineCost(it, q)); } } }
   else { const all = new Set(p.pages.map(g => g.id)); for (const it of p.items.filter(i => !i.alt)) { const q = qtyOf(it, all); if (q) add(BREAKS[dim][1](it), lineCost(it, it.kind !== "count" ? Math.ceil(q) : q)); } }
   return by;
@@ -1757,6 +1769,7 @@ function bidSummaryHtml(t) {
       return `<div class="eyebrow" style="margin-top:6px">Sanity checks</div><label class="field"><span>Building area (sq ft) for cost-per-square-foot</span><input class="inp" id="bsArea" type="number" min="0" value="${a || ""}"></label>
       <table class="t"><tr><td>Labour : material</td><td class="r num">${t2.matM ? fmt(t2.lab / t2.matM, 2) + " : 1" : "-"}</td></tr><tr><td>Sell price per sq ft</td><td class="r num">${r(t2.sub)}</td></tr><tr><td>Material per sq ft</td><td class="r num">${r(t2.matM)}</td></tr><tr><td>Labour hours per 1,000 sq ft</td><td class="r num">${a ? fmt(t2.hrs / a * 1000, 1) : "-"}</td></tr><tr><td>Material per labour hour</td><td class="r num">${t2.hrs ? money(t2.matM / t2.hrs) : "-"}</td></tr><tr><td>Margin on sell price</td><td class="r num">${t2.sub ? fmt((t2.sub - t2.cost) / t2.sub * 100, 1) + "%" : "-"}</td></tr></table>
       <p class="muted" style="margin:0;font-size:12px">Compare these with past jobs of the same type. A number far off usually means a missed item or a wrong price.</p>`; })()}
+    ${benchHtml(dim)}
     <p class="muted" style="margin:0;font-size:12px">Set System, Phase / area and Cost code on each item (pencil in the Takeoff list) to break the bid down those ways.</p></details>
     ${jobCostHtml()}`;
 }
@@ -1882,7 +1895,7 @@ async function exportChangeOrder() {
 }
 async function exportRFQ() {
   const p = P(), rows = takeoffRows(), H = (a) => a.map(v => ({ v, s: "head" })); const mats = {};
-  for (const r of rows) { if (r.it.asm?.length) for (const m of r.it.asm) { const k = (m.n || "") + "|" + (m.u || ""); (mats[k] ||= { n: m.n, u: m.u, q: 0 }).q += (+m.q || 0) * r.q; } else { const k = r.it.name + "|" + r.unit; (mats[k] ||= { n: r.it.name, u: r.unit, q: 0 }).q += r.q; } }
+  for (const r of rows) { if (r.it.asm?.length) for (const m of r.it.asm.filter(partOn)) { const k = (m.n || "") + "|" + (m.u || ""); (mats[k] ||= { n: m.n, u: m.u, q: 0 }).q += (+m.q || 0) * r.q; } else { const k = r.it.name + "|" + r.unit; (mats[k] ||= { n: r.it.name, u: r.unit, q: 0 }).q += r.q; } }
   const s1 = [[{ v: "Request for pricing", s: "title" }], [(CO.company || "") + (CO.phone ? " · " + CO.phone : "") + (CO.email ? " · " + CO.email : "")], ["Project: " + p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Please quote the following and return by: ____________"], [], H(["Material", "Qty", "Unit", "Your unit price", "Extended", "Lead time / notes"])];
   for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) s1.push([e.n, Math.ceil(e.q * 100) / 100, e.u || "", "", "", ""]);
   saveFile(slug(p.name) + "-price-request.xlsx", await buildXlsx([{ name: "Price Request", cols: [40, 10, 7, 15, 13, 28], rows: s1 }]));
@@ -1990,7 +2003,7 @@ function editItem(id) {
    <label class="field"><span>Colour</span><select class="inp" id="eCol">${COLORS.map(c => `<option value="${c}" ${c === it.color ? "selected" : ""} style="color:${c}">■ ${c}</option>`).join("")}</select></label></div>
    <div class="grid2"><label class="field"><span>Unit price $ (per ${unitOf(it)})</span><input class="inp" id="ePrice" type="number" step="0.01" min="0" value="${it.price ?? ""}" placeholder="optional"></label>
    <label class="field"><span>Labour hours per ${unitOf(it)}</span><input class="inp" id="eLab" type="number" step="0.01" min="0" value="${it.labour ?? ""}" placeholder="e.g. 0.5"></label></div>
-   ${it.kind !== "count" ? `<label class="field"><span>Waste / extra %</span><input class="inp" id="eWaste" type="number" step="1" min="0" value="${it.waste ?? 10}"></label>` :
+   ${it.kind === "fit" ? fitEditHtml(it) : it.kind !== "count" ? `<label class="field"><span>Waste / extra %</span><input class="inp" id="eWaste" type="number" step="1" min="0" value="${it.waste ?? 10}"></label>` :
       `<label class="field"><span>Sensitivity — ${it.sens ?? 6} of 10 (higher finds more)</span><input type="range" id="eSens" min="1" max="10" value="${it.sens ?? 6}"></label>
    <div class="row"><label class="row" style="gap:6px"><input type="checkbox" id="eRot" ${it.rotate !== false ? "checked" : ""}> Find rotated symbols</label><label class="row" style="gap:6px"><input type="checkbox" id="eMir" ${it.mirror ? "checked" : ""}> Find mirrored</label><label class="row" style="gap:6px"><input type="checkbox" id="eMS" ${it.multiScale ? "checked" : ""}> Slightly different sizes</label></div>
    ${it.templates?.length ? `<div class="row">${it.templates.map(t => `<img src="${tplImg(t)}" style="width:48px;height:48px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:5px" alt="Symbol sample">`).join("")}<span class="muted" style="font-size:12px">Symbol samples used for counting</span></div>` : ""}`}
@@ -1998,28 +2011,33 @@ function editItem(id) {
     <p class="muted" style="margin:6px 0;font-size:12.5px">List what one ${esc(it.name)} needs (box, device, plate, wire…). The quote prices it from these parts and Excel gets a full Material List.</p>
     <div id="asmRows" style="display:grid;gap:6px"></div>
     <div class="row" style="margin-top:6px"><button class="btn sm" id="asmAdd" type="button">+ Add part</button>${asmStarter(it) ? `<button class="btn sm" id="asmStart" type="button">Start from a typical assembly</button>` : ""}<span class="spacer"></span><span class="muted num" id="asmTot"></span></div></details>
+   ${fitHtml(it)}
    <details ${it.sys || it.phase || it.cc || it.mfr ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Breakdowns, cost code and submittal info</summary>
     <div class="grid2" style="margin-top:6px"><label class="field"><span>System</span><input class="inp" id="eSys" list="dlSys" value="${esc(it.sys || "")}" placeholder="e.g. Lighting, Domestic water"></label><label class="field"><span>Phase / area</span><input class="inp" id="ePhase" list="dlPhase" value="${esc(it.phase || "")}" placeholder="e.g. Level 2, Rough-in"></label></div>
     <div class="grid2"><label class="field"><span>Cost code</span><input class="inp" id="eCC" value="${esc(it.cc || "")}" placeholder="e.g. 26-0500"></label><label class="field"><span>Manufacturer</span><input class="inp" id="eMfr" value="${esc(it.mfr || "")}"></label></div>
     <div class="grid2"><label class="field"><span>Model / catalogue no.</span><input class="inp" id="eModel" value="${esc(it.model || "")}"></label><label class="field"><span>Spec sheet link</span><input class="inp" id="eSpec" value="${esc(it.spec || "")}" placeholder="https://…"></label></div>
     <datalist id="dlSys">${[...new Set(P().items.map(i => i.sys).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist><datalist id="dlPhase">${[...new Set(P().items.map(i => i.phase).filter(Boolean))].map(v => `<option value="${esc(v)}">`).join("")}</datalist></details>
+   <div class="adv" style="display:contents">${colsEditHtml(it)}</div>
    <label class="row" style="gap:6px"><input type="checkbox" id="eAlt" ${it.alt ? "checked" : ""}> Price as an alternate (shown separately, not in the base bid)</label>
    <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
    <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><button class="btn" id="eMove" type="button" title="Move this item's takeoff to another item, or swap the material">Move / swap</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
   let asm = JSON.parse(JSON.stringify(it.asm || []));
-  const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
-  const asmTot = () => { const t = asm.reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0); $("#asmTot").textContent = asm.length ? "Parts cost per " + unitOf(it) + ": " + money(t) : ""; };
-  $("#asmRows").oninput = (e) => { const el = e.target, k = Object.keys(el.dataset)[0], i = +el.dataset[k]; if (!asm[i]) return; ({ an: () => asm[i].n = el.value, aq: () => asm[i].q = el.value === "" ? 0 : +el.value, au: () => asm[i].u = el.value, ac: () => asm[i].c = el.value === "" ? "" : +el.value })[k]?.(); asmTot(); };
+  const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><select class="inp adv" data-aw="${i}" style="width:92px;padding-left:4px" title="Only count this part when a job condition is ticked"><option value="">Always</option>${CONDS.map(([k, l]) => `<option value="${k}" ${m.w === k ? "selected" : ""}>If: ${esc(l)}</option>`).join("")}</select><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
+  const asmTot = () => { const t = asm.filter(partOn).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0); $("#asmTot").textContent = asm.length ? "Parts cost per " + unitOf(it) + ": " + money(t) : ""; };
+  $("#asmRows").oninput = (e) => { const el = e.target, k = Object.keys(el.dataset)[0], i = +el.dataset[k]; if (!asm[i]) return; ({ an: () => asm[i].n = el.value, aq: () => asm[i].q = el.value === "" ? 0 : +el.value, au: () => asm[i].u = el.value, ac: () => asm[i].c = el.value === "" ? "" : +el.value, aw: () => asm[i].w = el.value || undefined })[k]?.(); asmTot(); };
+  $("#asmRows").onchange = (e) => { if (e.target.dataset.aw != null) { asm[+e.target.dataset.aw].w = e.target.value || undefined; asmTot(); } };
   $("#asmRows").onclick = (e) => { const b = e.target.closest("[data-adel]"); if (b) { asm.splice(+b.dataset.adel, 1); asmPaint(); } };
   $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
   if ($("#asmStart")) $("#asmStart").onclick = () => { asm = asmStarter(it).map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
   asmPaint();
-  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; if ((pr === "" ? null : +pr) !== it.price) it.priceAt = Date.now(); it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; if ((pr === "" ? null : +pr) !== it.price) it.priceAt = Date.now(); it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#fRule")) { it.rule = $("#fRule").value; it.every = +$("#fEvery").value || 10; } if (cols().length) { it.cf = it.cf || {}; $$("[data-cf]").forEach(i => { const n = cols()[+i.dataset.cf]; if (i.value.trim()) it.cf[n] = i.value.trim(); else delete it.cf[n]; }); } if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  if ($("#fitAdd")) $("#fitAdd").onclick = () => { save(); const k = addFittings(it); changed(); toast(`${k.length} fitting items added under ${it.name}. Set their prices from the Takeoff list.`); };
+  $("#cfAdd").onclick = () => { const n = $("#cfNew").value.trim(); if (!n) return; if (!cols().includes(n)) (P().cols ||= []).push(n); save(); editItem(it.id); };
   $("#eSave").onclick = save; $("#eMove").onclick = () => { closeDialog(); moveTakeoff([it.id]); };
   if (priceOld(it)) $("#ePrice").insertAdjacentHTML("afterend", `<small class="muted" style="color:var(--bad)">Set ${priceAge(it)} days ago</small>`);
   if ($("#eSaveCount")) $("#eSaveCount").onclick = async () => { save(); const r = await countItem(it, P().pages); changed({ sheets: true }); reportCount(it, r); };
-  $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); P().markups = P().markups.filter(m => m.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
+  $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it && i.parent !== it.id); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); P().markups = P().markups.filter(m => m.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
 }
 function addManualItem(kindWanted) {
   const pres = tr().presets.filter(x => !kindWanted || x[1] === kindWanted);
@@ -2047,10 +2065,11 @@ function editRun(id) {
   const r = P().runs.find(x => x.id === id); if (!r) return; const runs = P().items.filter(i => i.kind === "length");
   openDialog(`<div class="dlg-h"><h3>Run details</h3></div><div class="dlg-b"><label class="field"><span>Run type</span><select class="inp" id="rItem">${runs.map(i => `<option value="${i.id}" ${i.id === r.item ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select></label>
    <div class="grid2"><label class="field"><span>Drops / risers</span><input class="inp" id="rDrops" type="number" min="0" value="${r.drops || 0}"></label><label class="field"><span>Length per drop (${P().units})</span><input class="inp" id="rDL" type="number" min="0" step="0.5" value="${r.dropLen ?? 10}"></label></div>
-   <p class="muted" style="margin:0">Traced: <b class="num">${lenTxt(realLen(r.pts, P().pages.find(g => g.id === r.page)))}</b> · ${bends(r.pts)} bends found · total with waste and drops <b class="num">${lenTxt(runLen(r, P().pages.find(g => g.id === r.page)))}</b></p></div>
+   <p class="muted" style="margin:0">Traced: <b class="num">${lenTxt(realLen(r.pts, P().pages.find(g => g.id === r.page)))}</b> · ${bends(r.pts)} bends found · total with waste and drops <b class="num">${lenTxt(runLen(r, P().pages.find(g => g.id === r.page)))}</b></p>${splitRunHtml(r)}</div>
    <div class="dlg-f"><button class="btn danger" id="rDel">Delete run</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="rOk">Save</button></div>`);
   $("#rOk").onclick = () => { commit(); r.item = $("#rItem").value; r.drops = +$("#rDrops").value || 0; r.dropLen = +$("#rDL").value || 0; closeDialog(); changed(); };
   $("#rDel").onclick = () => { commit(); P().runs = P().runs.filter(x => x !== r); closeDialog(); changed(); };
+  if ($("#spGo")) $("#spGo").onclick = () => splitRun(r, +$("#spAt").value, $("#spTo").value);
 }
 
 /* ------------------------- Dialog / toast / busy ------------------------- */
@@ -2331,14 +2350,14 @@ async function buildXlsx(sheets) {
 }
 async function exportXlsx() {
   const p = P(), rows = takeoffRows(), t = totals(), H = (a) => a.map(v => ({ v, s: "head" }));
-  const s1 = [[{ v: CO.company + " — Material Takeoff", s: "title" }], [p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Prepared " + new Date().toLocaleDateString("en-CA")], [], H(["Category", "Item", "Qty", "Unit", "Unit price", "Extended", "Labour h/unit", "Labour hours", "System", "Phase / area", "Cost code", "Manufacturer", "Model"])];
-  for (const r of rows) s1.push([r.cat, r.it.name, r.q, r.unit, r.price != null ? { v: r.price, s: "money" } : "", r.ext != null ? { v: r.ext, s: "money" } : "", r.lab ?? "", r.hrs != null ? { v: Math.round(r.hrs * 100) / 100, s: "dec" } : "", r.it.sys || "", r.it.phase || "", r.it.cc || "", r.it.mfr || "", r.it.model || ""]);
+  const s1 = [[{ v: CO.company + " — Material Takeoff", s: "title" }], [p.name + (p.quote.site ? " · " + p.quote.site : "")], ["Prepared " + new Date().toLocaleDateString("en-CA")], [], H(["Category", "Item", "Qty", "Unit", "Unit price", "Extended", "Labour h/unit", "Labour hours", "System", "Phase / area", "Cost code", "Manufacturer", "Model", ...cols()])];
+  for (const r of rows) s1.push([r.cat, r.it.name, r.q, r.unit, r.price != null ? { v: r.price, s: "money" } : "", r.ext != null ? { v: r.ext, s: "money" } : "", r.lab ?? "", r.hrs != null ? { v: Math.round(r.hrs * 100) / 100, s: "dec" } : "", r.it.sys || "", r.it.phase || "", r.it.cc || "", r.it.mfr || "", r.it.model || "", ...cols().map(c => (r.it.cf || {})[c] ?? "")]);
   s1.push([], [{ v: "Material total", s: "b" }, "", "", "", "", { v: t.mat, s: "bmoney" }, "", { v: Math.round(t.hrs * 100) / 100, s: "dec" }]);
   const s2 = [H(["Sheet", "Drawing set", "Item", "Qty", "Unit"])];
   for (const g of p.pages) for (const it of p.items) { const q = qtyOf(it, new Set([g.id])); if (q > 0) s2.push([g.name, docOf(g).set, it.name, it.kind !== "count" ? Math.ceil(q) : q, unitOf(it)]); }
   const s3 = [H(["Sheet", "Run type", "Traced length", "Bends", "Drops", "Total with waste & drops", "Unit"])];
   for (const r of p.runs) { const g = p.pages.find(x => x.id === r.page), it = itemOf(r.item), u = p.units === "m" ? 1 : M_PER_FT; const tl = realLen(r.pts, g), tt = runLen(r, g); s3.push([g?.name, (it?.name || "") + (r.circuit ? " (" + r.circuit + ")" : ""), tl != null ? +(tl / u).toFixed(1) : "no scale", bends(r.pts), r.drops || 0, tt != null ? +(tt / u).toFixed(1) : "", p.units]); }
-  const mats = {}; for (const r of rows) for (const m of r.it.asm || []) { const k = (m.n || "") + "|" + (m.u || ""); const e = mats[k] ||= { n: m.n, u: m.u, q: 0, c: m.c }; e.q += (+m.q || 0) * r.q; }
+  const mats = {}; for (const r of rows) for (const m of (r.it.asm || []).filter(partOn)) { const k = (m.n || "") + "|" + (m.u || ""); const e = mats[k] ||= { n: m.n, u: m.u, q: 0, c: m.c }; e.q += (+m.q || 0) * r.q; }
   const s4 = [H(["Material", "Qty", "Unit", "Unit cost", "Extended"])]; for (const e of Object.values(mats).sort((a, b) => String(a.n).localeCompare(String(b.n)))) { const q = Math.ceil(e.q * 100) / 100; s4.push([e.n, q, e.u || "", e.c !== "" && e.c != null ? { v: +e.c, s: "money" } : "", e.c !== "" && e.c != null ? { v: q * e.c, s: "money" } : ""]); }
   const sheets = [{ name: "Material Takeoff", cols: [18, 34, 9, 7, 12, 13, 13, 13, 16, 16, 12, 16, 16], rows: s1 }, { name: "By Sheet", cols: [22, 20, 34, 9, 7], rows: s2 }, { name: "Runs", cols: [22, 30, 14, 8, 8, 22, 7], rows: s3 }];
   if (s4.length > 1) sheets.splice(1, 0, { name: "Material List", cols: [36, 10, 7, 12, 13], rows: s4 });
@@ -2347,6 +2366,7 @@ async function exportXlsx() {
   for (const a of t.alts) add("Alternate: " + a.it.name, a.sell);
   if (labF(p.quote)) bs.push(["Labour difficulty and job conditions", labF(p.quote) + "%"]); if (+p.quote.area) { bs.push(["Building area", p.quote.area + " sq ft"]); add("Sell price per sq ft", t.sub / p.quote.area); }
   sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
+  if (zoneNames().length) { const zr = []; for (const it of p.items) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) zr.push([k, it.name, it.kind === "count" || it.kind === "fit" ? q : Math.ceil(q), unitOf(it)]); zr.sort((a, b) => String(a[0]).localeCompare(String(b[0]), "en", { numeric: true })); sheets.push({ name: "By Zone", cols: [22, 34, 9, 7], rows: [H(["Zone", "Item", "Qty", "Unit"]), ...zr] }); }
   if ((p.log || []).length) sheets.push({ name: "Change History", cols: [22, 70], rows: [H(["When", "Change"]), ...p.log.map(x => [new Date(x.at).toLocaleString("en-CA"), x.t])] });
   const bk = [H(["Breakdown", "Group", "Material", "Labour hours", "Labour $"])];
   for (const d of ["cat", "sys", "phase", "cc", "sheet"]) { const by = breakdown(d); const vals = Object.entries(by); if (d !== "cat" && d !== "sheet" && vals.length === 1 && /^\(no /.test(vals[0][0])) continue; for (const [k, v] of vals) bk.push([BREAKS[d][0], k, { v: Math.round(v.mat * 100) / 100, s: "money" }, { v: Math.round(v.hrs * 100) / 100, s: "dec" }, { v: Math.round(v.lab * 100) / 100, s: "money" }]); }
@@ -2877,11 +2897,150 @@ function showQuoteLines(vendor, no, total, lines) {
   };
 }
 
+/* ------------------------- Nov 22 batch 3 ------------------------- */
+/* Zones: named boundaries drawn on sheets. Takeoff inside each zone is totalled across every sheet. */
+function inPoly(pts, x, y) { let c = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi || 1e-9) + xi) c = !c; } return c; }
+const zonesOn = (pgId) => P().markups.filter(m => m.type === "zone" && m.page === pgId);
+const zoneNames = () => [...new Set(P().markups.filter(m => m.type === "zone").map(z => z.name || "Zone"))];
+function zoneOfPt(pgId, x, y) { for (const z of zonesOn(pgId)) if (inPoly(z.pts, x, y)) return z.name || "Zone"; return null; }
+const centroid = (pts) => pts.reduce((a, p) => [a[0] + p[0] / pts.length, a[1] + p[1] / pts.length], [0, 0]);
+function qtyByZone(it) {
+  const p = P(), out = {}, add = (k, v) => out[k || "(no zone)"] = (out[k || "(no zone)"] || 0) + v;
+  if (it.kind === "count") for (const m of p.marks) if (m.item === it.id) add(zoneOfPt(m.page, m.x, m.y), 1);
+  if (it.kind === "length") for (const r of p.runs) if (r.item === it.id) { const pg = p.pages.find(g => g.id === r.page), l = runLen(r, pg); if (l == null) continue; const mid = r.pts[Math.floor(r.pts.length / 2)]; add(zoneOfPt(r.page, mid[0], mid[1]), p.units === "m" ? l : l / M_PER_FT); }
+  if (it.kind === "area") for (const mk of p.markups) if (mk.type === "area" && mk.item === it.id) { const pg = p.pages.find(g => g.id === mk.page); if (!pg?.scale) continue; let A = (mk.deduct ? -1 : 1) * polyArea(mk.pts) * pg.scale.m * pg.scale.m * (1 + (it.waste || 0) / 100); if (p.units !== "m") A /= M_PER_FT * M_PER_FT; const c = centroid(mk.pts); add(zoneOfPt(mk.page, c[0], c[1]), A); }
+  if (it.kind === "fit") { const parent = itemOf(it.parent); if (parent) for (const r of p.runs) if (r.item === parent.id) { const mid = r.pts[Math.floor(r.pts.length / 2)]; add(zoneOfPt(r.page, mid[0], mid[1]), fitQtyRun(it, r)); } }
+  return out;
+}
+async function finishZone(pts) {
+  const pg = page(), names = zoneNames();
+  openDialog(`<div class="dlg-h"><h3>Name this zone</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Use the same name on every sheet (say "Unit 204" or "Level 3 East") and the bid totals that zone across all of them.</p><input class="inp" id="znName" list="znList" placeholder="e.g. Unit 204" value="${esc(names[names.length - 1] || "")}"><datalist id="znList">${names.map(n => `<option value="${esc(n)}">`).join("")}</datalist></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="znOk">Save zone</button></div>`);
+  $("#znName").select();
+  const go = () => { const n = $("#znName").value.trim() || "Zone " + (names.length + 1); closeDialog(); commit(); P().markups.push({ id: uid(), page: pg.id, type: "zone", pts, name: n, color: "#8E4EC6", at: Date.now() }); S.draft = null; S.breakDim = "zone"; changed(); toast(`Zone "${n}" saved. The Quote tab's bid summary now breaks down by zone.`); };
+  $("#znOk").onclick = go; $("#znName").onkeydown = (e) => { if (e.key === "Enter") go(); };
+  $("#dlg").addEventListener("close", () => { S.draft = null; draw(); }, { once: true });
+}
+function drawZone(g, mk, px) {
+  g.save(); g.strokeStyle = mk.color || "#8E4EC6"; g.fillStyle = mk.color || "#8E4EC6"; g.lineWidth = 2 * px; g.setLineDash([10 * px, 6 * px]);
+  g.globalAlpha = .07; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); g.setLineDash([]);
+  const xs = mk.pts.map(p => p[0]), ys = mk.pts.map(p => p[1]); label(g, Math.min(...xs) + 6 * px, Math.min(...ys) + 14 * px, "ZONE · " + (mk.name || ""), mk.color || "#8E4EC6", px); g.restore();
+}
+
+/* Fittings counted from runs: bends, ends, every-N-length couplings and straps, drops. */
+const FIT_RULES = { bend: "each bend", end: "each end of a run", len: "every set length", drop: "each drop / riser" };
+function fitQtyRun(it, r) {
+  if (it.rule === "bend") return bends(r.pts);
+  if (it.rule === "end") return 2;
+  if (it.rule === "drop") return r.drops || 0;
+  if (it.rule === "len") { const pg = P().pages.find(g => g.id === r.page), l = runLen(r, pg); if (l == null) return 0; const L = P().units === "m" ? l : l / M_PER_FT; return Math.ceil(L / (+it.every || 10)); }
+  return 0;
+}
+function fitQty(it, pages) { const parent = itemOf(it.parent); if (!parent) return 0; let n = 0; for (const r of P().runs) if (r.item === parent.id && pages.has(r.page)) n += fitQtyRun(it, r); return n; }
+function fitDefaults() {
+  const m = P().units === "m", t = P().trade, L = (ft, mm) => m ? mm : ft;
+  if (t === "electrical") return [["90° bend / elbow", "bend"], ["Coupling", "len", L(10, 3)], ["Connector", "end"], ["Strap", "len", L(8, 2.5)]];
+  if (t === "plumbing" || t === "fire") return [["Elbow", "bend"], ["Coupling", "len", L(20, 6)], ["Hanger", "len", L(8, 2.5)]];
+  if (t === "hvac") return [["Elbow", "bend"], ["Hanger", "len", L(8, 2.5)], ["Joint / connector", "len", L(5, 1.5)]];
+  return [["Corner / bend piece", "bend"], ["Support", "len", L(8, 2.5)]];
+}
+function addFittings(parent) {
+  commit(); const made = [];
+  for (const [n, rule, every] of fitDefaults()) { const it = newItem({ name: `${n} (${parent.name})`, kind: "count", cat: parent.cat }); it.kind = "fit"; it.parent = parent.id; it.rule = rule; if (every) it.every = every; it.unit = "ea"; it.templates = []; it.waste = 0; P().items.splice(P().items.indexOf(parent) + 1 + made.length, 0, it); made.push(it); }
+  return made;
+}
+function fitHtml(it) {
+  if (it.kind !== "length") return "";
+  const kids = P().items.filter(i => i.kind === "fit" && i.parent === it.id);
+  return `<details ${kids.length ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Fittings counted from these runs${kids.length ? ` (${kids.length})` : ""}</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">Bends, ends and lengths are counted from every run you draw, so elbows, couplings, connectors and straps price themselves. Each fitting is its own item: open it from the Takeoff list to set its price.</p>
+   ${kids.map(k => `<div class="row" style="gap:6px;font-size:13px"><span style="flex:1;min-width:0">${esc(k.name)}</span><span class="muted">${FIT_RULES[k.rule]}${k.rule === "len" ? ` (${k.every} ${P().units})` : ""}</span><b class="num">${fmt(fitQty(k, new Set(P().pages.map(g => g.id))))}</b></div>`).join("")}
+   ${kids.length ? "" : `<button class="btn sm" id="fitAdd" type="button">Add standard fittings for ${esc(tr().name.toLowerCase())}</button>`}</details>`;
+}
+function fitEditHtml(it) {
+  if (it.kind !== "fit") return "";
+  const p = itemOf(it.parent);
+  return `<div class="grid2"><label class="field"><span>Counted at</span><select class="inp" id="fRule">${Object.entries(FIT_RULES).map(([k, v]) => `<option value="${k}" ${k === it.rule ? "selected" : ""}>${v}</option>`).join("")}</select></label><label class="field"><span>Every (${P().units}, for "every set length")</span><input class="inp" id="fEvery" type="number" min="0.5" step="0.5" value="${it.every ?? 10}"></label></div><p class="muted" style="margin:0;font-size:12.5px">Counted from the runs of <b>${esc(p?.name || "(deleted run item)")}</b>.</p>`;
+}
+
+/* Split a run at a bend; the second part can go to another item. */
+function splitRunHtml(r) {
+  if (r.pts.length < 3) return "";
+  const others = P().items.filter(i => i.kind === "length");
+  return `<details style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Split this run</summary><div class="grid2" style="margin-top:6px"><label class="field"><span>Split at</span><select class="inp" id="spAt">${r.pts.slice(1, -1).map((_, i) => `<option value="${i + 1}">Point ${i + 2} of ${r.pts.length}</option>`).join("")}</select></label><label class="field"><span>Second part goes to</span><select class="inp" id="spTo">${others.map(i => `<option value="${i.id}" ${i.id === r.item ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select></label></div><button class="btn sm" id="spGo" type="button">Split</button></details>`;
+}
+function splitRun(r, at, to) {
+  commit(); const a = r.pts.slice(0, at + 1), b = r.pts.slice(at);
+  const nr = { ...JSON.parse(JSON.stringify(r)), id: uid(), pts: b, item: to, drops: Math.round((r.drops || 0) * (b.length - 1) / (r.pts.length - 1)) };
+  r.drops = (r.drops || 0) - nr.drops; r.pts = a; P().runs.push(nr); closeDialog(); changed(); toast("Run split in two. Ctrl+Z undoes.");
+}
+
+/* Sheet links: clicking a sheet number on a drawing (a detail callout or reference) jumps to that sheet. */
+S.backStack = [];
+async function sheetLinkAt(x, y) {
+  const pg = page(); if (!pg) return false; const txt = await pageText(pg); if (!txt.length) return false;
+  const tol = 4 / S.zoom, hit = txt.find(t => x >= t.x - tol && x <= t.x + t.w + tol && y >= t.y - tol && y <= t.y + t.h + tol); if (!hit) return false;
+  const s = hit.s.toUpperCase(); let best = -1;
+  P().pages.forEach((g, i) => { if (g.id === pg.id || !g.name || g.name.length < 2) return; const n = g.name.toUpperCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); if (new RegExp("(^|[^A-Z0-9])" + n + "($|[^A-Z0-9])").test(s)) best = i; });
+  if (best < 0) return false;
+  S.backStack.push({ i: S.pageIdx, z: S.zoom, x: S.panX, y: S.panY }); await openPage(best);
+  toast(`Opened ${P().pages[best].name} from the reference on ${pg.name}.`, [["Back", sheetBack]]); return true;
+}
+async function sheetBack() { const b = S.backStack.pop(); if (!b) return; await openPage(b.i, { keepView: true }); S.zoom = b.z; S.panX = b.x; S.panY = b.y; updZoom(); draw(); }
+
+/* Callout: arrow from a spot to a text note, in one markup. */
+function placeCallout(box, sx, sy) {
+  const v = $("#viewer"); closePop();
+  const pop = document.createElement("div"); pop.className = "pop"; pop.id = "pop"; pop.style.left = clamp(sx, 10, v.clientWidth - 310) + "px"; pop.style.top = clamp(sy, 70, v.clientHeight - 160) + "px";
+  pop.innerHTML = `<textarea class="inp" id="mkText" placeholder="Callout note (e.g. Relocate receptacle 2 ft left)"></textarea><div class="row" style="justify-content:flex-end"><button class="btn sm" id="mkCancel">Cancel</button><button class="btn sm primary" id="mkOk">Place callout</button></div>`;
+  v.appendChild(pop); $("#mkText").focus(); $("#mkCancel").onclick = () => { closePop(); draw(); };
+  $("#mkOk").onclick = () => { const t = $("#mkText").value.trim(); closePop(); if (!t) return draw(); commit(); P().markups.push({ id: uid(), page: page().id, type: "callout", box, text: t, color: S.markStyle.color, at: Date.now() }); changed(); };
+}
+function drawCallout(g, mk, px) {
+  const [x1, y1, x2, y2] = mk.box; g.save(); g.textAlign = "left"; g.strokeStyle = mk.color; g.fillStyle = mk.color; g.lineWidth = 2 * px;
+  g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); g.beginPath(); g.arc(x1, y1, 4 * px, 0, 7); g.fill();
+  const fs = 13 * px; g.font = `600 ${fs}px "IBM Plex Sans", sans-serif`; g.textBaseline = "top"; const lines = String(mk.text || "").split("\n"); const tw = Math.max(...lines.map(l => g.measureText(l).width)) + 12 * px, th = lines.length * fs * 1.25 + 10 * px;
+  const bx = x2 >= x1 ? x2 : x2 - tw, by = y2 - th / 2; g.fillStyle = "rgba(255,255,255,.95)"; g.fillRect(bx, by, tw, th); g.strokeRect(bx, by, tw, th); g.fillStyle = mk.color; lines.forEach((l, i) => g.fillText(l, bx + 6 * px, by + 5 * px + i * fs * 1.25)); g.restore();
+}
+
+/* Custom columns on items, carried into the Excel takeoff. */
+const cols = () => P().cols || [];
+function colsEditHtml(it) {
+  const c = cols();
+  return `<details ${c.length ? "open" : ""} style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">My columns${c.length ? ` (${c.length})` : ""}</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">Your own columns for this job (supplier, room, crew…). They show in the Excel takeoff export.</p>
+   ${c.map((n, i) => `<label class="field"><span>${esc(n)}</span><input class="inp" data-cf="${i}" value="${esc((it.cf || {})[n] ?? "")}"></label>`).join("")}
+   <div class="row" style="gap:6px"><input class="inp" id="cfNew" placeholder="New column name" style="flex:1"><button class="btn sm" id="cfAdd" type="button">Add column</button></div></details>`;
+}
+
+/* Conditional parts: a part that only counts when a job condition is ticked. */
+const partOn = (m) => !m.w || !!(P()?.quote?.conds || {})[m.w];
+
+/* Past-job benchmarks: how actual hours compared with the estimate on finished jobs. */
+S.bench = null;
+async function loadBench() {
+  if (S.benchLoading) return; S.benchLoading = true;
+  const all = (await IDB.all("projects")) || [], real = S.proj, out = { cat: {}, cc: {} };
+  for (const o of all) {
+    if (!o || o.id === real?.id || o.deletedAt || !o.actual || !Object.keys(o.actual).length) continue;
+    S.proj = o;
+    try { for (const dim of ["cat", "cc"]) { const by = breakdown(dim); for (const [k, v] of Object.entries(by)) { const a = +o.actual[k]; if (!(a > 0) || !(v.hrs > 0)) continue; const e = out[dim][k] ||= { est: 0, act: 0, jobs: 0 }; e.est += v.hrs; e.act += a; e.jobs++; } } }
+    catch (e) { } finally { S.proj = real; }
+  }
+  S.bench = out; S.benchLoading = false; if (S.proj && S.tab === "quote") renderQuote();
+}
+function benchHtml(dim) {
+  if (dim !== "cat" && dim !== "cc") return "";
+  if (!S.bench) { loadBench(); return ""; }
+  const rows = Object.entries(S.bench[dim] || {}); if (!rows.length) return `<p class="muted" style="margin:0;font-size:12px">Past jobs: enter actual hours under Job costing on finished jobs, and this shows how your crews compare with your estimates.</p>`;
+  return `<div class="eyebrow" style="margin-top:6px">Your past jobs: actual vs estimated hours</div><table class="t">${rows.sort((a, b) => b[1].jobs - a[1].jobs).map(([k, v]) => { const r = v.act / v.est; return `<tr><td>${esc(k)} <span class="muted" style="font-size:11.5px">${v.jobs} job${v.jobs > 1 ? "s" : ""}</span></td><td class="r num" style="color:${r > 1.1 ? "var(--bad)" : r < 0.9 ? "var(--ok)" : "inherit"}">${fmt(r * 100)}% of estimate</td></tr>`; }).join("")}</table><p class="muted" style="margin:0;font-size:12px">Over 100% means past jobs took longer than estimated: raise the labour units or add a labour factor for those groups.</p>`;
+}
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
 function bind() {
-  window.addEventListener("resize", sizeCanvas);
+  window.addEventListener("resize", () => { sizeCanvas(); fitToolbar(); });
   $("#btnPB").onclick = openPriceBook;
   document.addEventListener("click", (e) => { if (e.target.id === "btnFind") findText(); if (e.target.id === "btnAddsOmits") addsOmits(); }); $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
@@ -2996,7 +3155,7 @@ function applyPanes() {
   const l = $("#togRail"), r = $("#togSide");
   if (l) { l.textContent = PANES.rail ? "‹" : "›"; l.title = (PANES.rail ? "Hide" : "Show") + " sheets panel ([)"; }
   if (r) { r.textContent = PANES.side ? "›" : "‹"; r.title = (PANES.side ? "Hide" : "Show") + " side panel (])"; }
-  requestAnimationFrame(sizeCanvas);
+  requestAnimationFrame(() => { sizeCanvas(); fitToolbar(); });
 }
 function togglePane(k, v) { PANES[k] = v ?? !PANES[k]; try { localStorage.setItem("tv-panes", JSON.stringify(PANES)); } catch (e) { } applyPanes(); }
 function centerOn(x, y) { const r = $("#viewer").getBoundingClientRect(); if (S.zoom < 0.6) S.zoom = 0.9; S.panX = r.width / 2 - x * S.zoom; S.panY = r.height / 2 - y * S.zoom; updZoom(); draw(); }
