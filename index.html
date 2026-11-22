@@ -259,6 +259,18 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
   .tool span{display:none}
   .tool{min-width:36px}
 }
+body.simple .adv{display:none!important}
+.menu .adv{display:flex;flex-direction:column}
+.item.bmode{grid-template-columns:16px 12px minmax(0,1fr) auto auto}
+.item .bchk{margin:0}
+.item.bsel{background:var(--blue-soft)}
+.bulkbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border:1px solid var(--blue);border-radius:8px;background:var(--blue-soft);font-size:12.5px}
+.shprog{margin:6px;display:grid;gap:4px}
+.shprog .bar{height:6px;border-radius:99px;background:var(--panel-2);overflow:hidden;border:1px solid var(--line)}
+.shprog .bar i{display:block;height:100%;background:var(--ok)}
+.chip[data-shst]{cursor:pointer}
+.chip.st-prog{background:var(--blue-soft);color:var(--blue-ink);border-color:transparent}
+.chip.st-done,.chip.st-chk{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ink);border-color:transparent}
 </style>
 
 <!-- ======================= HOME ======================= -->
@@ -274,6 +286,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
         <button class="btn" id="btnTpl">Templates</button>
         <button class="btn" id="btnPB">Price book</button>
         <button class="btn" id="btnTutorial">Tutorial</button>
+        <button class="btn" id="btnSimple" type="button">Simple mode</button>
       </div>
     </div>
     <div class="start-row">
@@ -345,7 +358,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
         <button class="tab on" data-tab="takeoff">Takeoff</button>
         <button class="tab" data-tab="markups">Markups</button>
         <button class="tab" data-tab="quote">Quote</button>
-        <button class="tab" data-tab="ai">Ask AI</button>
+        <button class="tab adv" data-tab="ai">Ask AI</button>
       </div>
       <div class="pane" id="pane-takeoff"></div>
       <div class="pane" id="pane-markups" hidden></div>
@@ -361,7 +374,7 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.10.38";
+const V = "4.11.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -1259,11 +1272,12 @@ async function pageText(g) {
 }
 async function findText() {
   if (!P()?.pages.length) return toast("Add drawings first.");
-  openDialog(`<div class="dlg-h"><h3>Find text on drawings</h3></div><div class="dlg-b"><input class="inp" id="fq" placeholder="Panel name, tag or note (e.g. LP-2, EF-1, GFCI)" autocomplete="off" value="${esc(S.findQ || "")}"><div id="fres" class="muted" style="max-height:52vh;overflow:auto;display:grid;gap:4px">Type at least 2 letters.</div><p class="muted" style="margin:0;font-size:12px">Searches the text inside PDF drawings. Scanned drawings and photos have no text to search.</p></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
-  let tm = null; const run = async () => { const q = $("#fq").value.trim(); S.findQ = q; const out = $("#fres"); if (!out) return; if (q.length < 2) { out.textContent = "Type at least 2 letters."; return; }
+  openDialog(`<div class="dlg-h"><h3>Find text on drawings</h3></div><div class="dlg-b"><input class="inp" id="fq" placeholder="Panel name, tag or note (e.g. LP-2, EF-1, GFCI)" autocomplete="off" value="${esc(S.findQ || "")}"><div id="fres" class="muted" style="max-height:44vh;overflow:auto;display:grid;gap:4px">Type at least 2 letters.</div><div id="fcount"></div><p class="muted" style="margin:0;font-size:12px">Searches the text inside PDF drawings. Scanned drawings and photos have no text to search.</p></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  let tm = null; const run = async () => { const q = $("#fq").value.trim(); S.findQ = q; const out = $("#fres"); if (!out) return; if (q.length < 2) { out.textContent = "Type at least 2 letters."; textCountUI([], q); return; }
     out.textContent = "Searching…"; const ql = q.toLowerCase(), hits = [];
     for (let i = 0; i < P().pages.length; i++) { const g = P().pages[i]; for (const t of await pageText(g)) if (t.s.toLowerCase().includes(ql)) hits.push({ i, g, t }); if ($("#fq")?.value.trim() !== q) return; }
     out.innerHTML = hits.length ? `<b style="color:var(--ink)">${hits.length} found</b>` + hits.slice(0, 300).map((h, k) => `<button class="btn ghost sm" data-fh="${k}" style="justify-content:flex-start;text-align:left"><b>${esc(h.g.name)}</b>&nbsp;<span class="muted">${esc(h.t.s.trim().slice(0, 70))}</span></button>`).join("") : "Nothing found on these sheets.";
+    textCountUI(hits, q);
     $$("[data-fh]").forEach(b => b.onclick = async () => { const h = hits[+b.dataset.fh]; closeDialog(); if (S.pageIdx !== h.i) await openPage(h.i); S.findHit = { pg: h.g.id, r: [h.t.x, h.t.y, h.t.w, h.t.h] }; if (S.zoom < 1.2) S.zoom = 1.6; centerOn(h.t.x + h.t.w / 2, h.t.y + h.t.h / 2); });
   };
   $("#fq").oninput = () => { clearTimeout(tm); tm = setTimeout(run, 250); }; $("#fq").focus(); if (S.findQ) run();
@@ -1338,8 +1352,8 @@ function closePop() { $("#pop")?.remove(); }
 let PB = {};
 const pbKey = (n) => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 function pbSave() { IDB.put("kv", "pricebook", PB); }
-function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); for (const k of ["cc", "mfr", "model", "spec"]) if (!it[k] && e[k]) it[k] = e[k]; return true; }
-function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], cc: it.cc, mfr: it.mfr, model: it.model, spec: it.spec, at: Date.now() }; pbSave(); }
+function pbApply(it) { const e = PB[pbKey(it.name)]; if (!e) return false; if (it.price == null && e.price != null) it.price = e.price; if (it.labour == null && e.labour != null) it.labour = e.labour; if (!it.asm?.length && e.asm?.length) it.asm = JSON.parse(JSON.stringify(e.asm)); for (const k of ["cc", "mfr", "model", "spec"]) if (!it[k] && e[k]) it[k] = e[k]; if (it.price != null && !it.priceAt) it.priceAt = e.at || Date.now(); return true; }
+function pbRemember(it) { if (it.price == null && it.labour == null && !it.asm?.length) return; PB[pbKey(it.name)] = { name: it.name, cat: it.cat, kind: it.kind, price: it.price, labour: it.labour, asm: it.asm || [], cc: it.cc, mfr: it.mfr, model: it.model, spec: it.spec, at: it.priceAt || Date.now() }; pbSave(); }
 const asmCost = (it) => (it.asm || []).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0);
 const priceOf = (it) => it.asm?.length && it.asm.some(m => m.c !== "" && m.c != null) ? asmCost(it) + (+it.extra || 0) : it.price;
 const ASM_STARTERS = {
@@ -1373,16 +1387,17 @@ function openPriceBook() {
   openDialog(`<div class="dlg-h"><h3>Price book</h3><span class="chip">${rows.length} items</span></div><div class="dlg-b">
    <p class="muted" style="margin:0;line-height:1.5">Prices, labour and materials you save here fill in automatically on every new job when an item has the same name. Saved on this device.</p>
    ${rows.length ? `<div style="max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:8px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:left"><th style="padding:6px 8px">Item</th><th style="padding:6px">Unit $</th><th style="padding:6px">Labour h</th><th style="padding:6px">Materials</th><th></th></tr></thead><tbody>
-   ${rows.map(r => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 8px">${esc(r.name)}</td><td style="padding:4px"><input class="inp num" style="width:86px" data-pbp="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.price ?? ""}"></td><td style="padding:4px"><input class="inp num" style="width:70px" data-pbl="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.labour ?? ""}"></td><td style="padding:6px" class="muted">${r.asm?.length ? r.asm.length + " parts" : "—"}</td><td style="padding:4px"><button class="btn ghost sm" data-pbdel="${esc(pbKey(r.name))}" title="Remove">${svgI("trash", 15)}</button></td></tr>`).join("")}
+   ${rows.map(r => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 8px">${esc(r.name)}${r.at && r.price != null && (Date.now() - r.at) / 86400000 > PRICE_DAYS() ? ` <span class="chip amber" style="font-size:10px;padding:0 4px" title="Price set ${Math.floor((Date.now() - r.at) / 86400000)} days ago">old</span>` : ""}</td><td style="padding:4px"><input class="inp num" style="width:86px" data-pbp="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.price ?? ""}"></td><td style="padding:4px"><input class="inp num" style="width:70px" data-pbl="${esc(pbKey(r.name))}" type="number" step="0.01" value="${r.labour ?? ""}"></td><td style="padding:6px" class="muted">${r.asm?.length ? r.asm.length + " parts" : "—"}</td><td style="padding:4px"><button class="btn ghost sm" data-pbdel="${esc(pbKey(r.name))}" title="Remove">${svgI("trash", 15)}</button></td></tr>`).join("")}
    </tbody></table></div>` : `<div class="muted">Empty for now. Open any item on a job, set its price, labour or materials, and leave "Save to my price book" ticked.</div>`}
-   <div class="row"><button class="btn sm" id="pbExp">Export CSV</button><label class="btn sm" for="pbImp">Import CSV</label><input type="file" id="pbImp" accept=".csv,text/csv" hidden><span class="muted" style="font-size:12px">CSV columns: name, unit price, labour hours</span></div></div>
+   <div class="row"><button class="btn sm" id="pbExp">Export CSV</button><label class="btn sm" for="pbImp">Import CSV</label><input type="file" id="pbImp" accept=".csv,text/csv" hidden><span class="muted" style="font-size:12px">CSV columns: name, unit price, labour hours</span></div>
+   <label class="row" style="gap:6px;font-size:12.5px">Flag prices older than <input class="inp num" id="pbDays" type="number" min="1" step="1" style="width:64px" value="${PRICE_DAYS()}"> days</label></div>
    <div class="dlg-f"><button class="btn" data-close>Close</button><button class="btn primary" id="pbOk">Save</button></div>`);
-  $("#pbOk").onclick = () => { $$("[data-pbp]").forEach(i => { const e = PB[i.dataset.pbp]; if (e) e.price = i.value === "" ? null : +i.value; }); $$("[data-pbl]").forEach(i => { const e = PB[i.dataset.pbl]; if (e) e.labour = i.value === "" ? null : +i.value; }); pbSave(); closeDialog(); toast("Price book saved."); };
+  $("#pbOk").onclick = () => { const dd = +$("#pbDays").value; if (dd > 0 && dd !== PRICE_DAYS()) { CO.priceDays = dd; IDB.put("kv", "company", CO); } $$("[data-pbp]").forEach(i => { const e = PB[i.dataset.pbp]; if (e) { const np = i.value === "" ? null : +i.value; if (np !== e.price) e.at = Date.now(); e.price = np; } }); $$("[data-pbl]").forEach(i => { const e = PB[i.dataset.pbl]; if (e) e.labour = i.value === "" ? null : +i.value; }); pbSave(); closeDialog(); toast("Price book saved."); };
   $$("[data-pbdel]").forEach(b => b.onclick = () => { delete PB[b.dataset.pbdel]; pbSave(); openPriceBook(); });
   $("#pbExp").onclick = () => { const csv = "name,unit_price,labour_hours\n" + rows.map(r => [`"${String(r.name).replace(/"/g, '""')}"`, r.price ?? "", r.labour ?? ""].join(",")).join("\n"); saveFile("price-book.csv", new Blob([csv], { type: "text/csv" })); };
-  $("#pbImp").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const t = await f.text(); let n = 0;
-    for (const line of t.split(/\r?\n/).slice(1)) { const m = line.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*)),\s*([^,]*),\s*([^,]*)/); if (!m) continue; const name = (m[1] ?? m[2] ?? "").replace(/""/g, '"').trim(); if (!name) continue; const k = pbKey(name); PB[k] = { ...(PB[k] || { name, asm: [] }), name, price: m[3] === "" ? null : +m[3], labour: m[4] === "" ? null : +m[4], at: Date.now() }; n++; }
-    pbSave(); openPriceBook(); toast(n + " price book items imported."); };
+  $("#pbImp").onchange = async (e) => { const f = e.target.files[0]; if (!f) return; const t = await f.text(); const rows = [];
+    for (const line of t.split(/\r?\n/).slice(1)) { const m = line.match(/^\s*(?:"((?:[^"]|"")*)"|([^,]*)),\s*([^,]*),\s*([^,]*)/); if (!m) continue; const name = (m[1] ?? m[2] ?? "").replace(/""/g, '"').trim(); if (!name) continue; const num = (v) => { v = String(v).replace(/[$\s]/g, ""); return v === "" || isNaN(+v) ? null : +v; }; rows.push({ name, price: num(m[3]), labour: num(m[4]) }); }
+    if (!rows.length) return toast("No rows found. The CSV needs columns: name, unit price, labour hours."); previewPriceImport(rows); };
 }
 function newItem(o) {
   const used = new Set(P().items.map(i => i.color)); const color = COLORS.find(c => !used.has(c)) || COLORS[P().items.length % COLORS.length];
@@ -1650,20 +1665,20 @@ function renderTakeoff() {
   const len = items.filter(i => i.kind === "length").reduce((a, i) => a + qtyOf(i, sc), 0);
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
   let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div>${items.length > 6 ? `<input class="inp" id="itemSearch" placeholder="Search items…" value="${esc(S.itemQ || "")}" autocomplete="off">` : ""}<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
-   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>`;
+   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>${items.length ? `<div class="row" style="gap:6px">${S.bulk ? "" : `<button class="btn sm" id="bulkOn" type="button" title="Tick several items to edit, move or swap them together">Select items</button>`}<button class="btn sm" id="btnGaps" type="button" title="Look for items with no price, labour or materials, and sheets not worked on">Check for gaps</button></div>` : ""}${bulkBar()}`;
   if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
   if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.</div>`;
   for (const cat of catsAll(items)) {
     const its = items.filter(i => i.cat === cat && (!S.itemQ || (i.name + " " + (i.sys || "") + " " + (i.cc || "")).toLowerCase().includes(S.itemQ.toLowerCase()))); if (!its.length) continue;
     h += `<div class="cat"><div class="cat-h"><b>${cat}</b></div>` + its.map(it => {
       const q = qtyOf(it, sc), hid = S.hidden.has(it.id);
-      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""}" data-item="${it.id}"><span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
+      return `<div class="item ${S.activeItem === it.id ? "on" : ""} ${hid ? "hid" : ""} ${S.bulk ? "bmode" : ""} ${S.bulk && S.bsel.has(it.id) ? "bsel" : ""}" data-item="${it.id}">${S.bulk ? `<input type="checkbox" class="bchk" ${S.bsel.has(it.id) ? "checked" : ""} tabindex="-1" aria-label="Select ${esc(it.name)}">` : ""}<span class="dot" style="background:${it.color}"></span><span class="nm" title="${esc(it.name)}">${esc(it.name)}${priceOf(it) == null ? "" : ` <span class="muted num" style="font-size:11.5px">· ${money(priceOf(it))}</span>`}${it.asm?.length ? ` <span class="chip" style="font-size:10.5px;padding:0 5px">${it.asm.length} parts</span>` : ""}${it.alt ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px">alternate</span>` : ""}${priceOld(it) ? ` <span class="chip amber" style="font-size:10.5px;padding:0 5px" title="Price set ${priceAge(it)} days ago">old price</span>` : ""}</span><span class="q">${it.kind === "length" ? fmt(q, 0) : fmt(q)} <small class="muted">${unitOf(it)}</small></span>
        <span class="acts"><button data-eye="${it.id}" title="${hid ? "Show" : "Hide"} on drawing">${svgI(hid ? "eyeoff" : "eye", 16)}</button>${it.kind === "count" && it.templates?.length ? `<button data-recount="${it.id}" title="Recount on all sheets">${svgI("redo", 16)}</button>` : ""}<button data-edit="${it.id}" title="Edit item">${svgI("edit", 16)}</button></span></div>`;
     }).join("") + `</div>`;
   }
   h += `<div class="row"><button class="btn sm" id="addManual">+ Add item by hand</button></div>`;
   if (sets.length > 1) {
-    h += `<div class="cat"><div class="cat-h"><b>Changes between sets</b><button class="btn sm" id="btnAddsOmits" style="margin-left:auto">Priced report</button></div><div class="row" style="margin:6px 0"><select class="inp" id="setA" style="flex:1">${sets.map(s => `<option>${esc(s)}</option>`).join("")}</select><span class="muted">to</span><select class="inp" id="setB" style="flex:1">${sets.map((s, i) => `<option ${i === sets.length - 1 ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></div><div id="setDiff"></div></div>`;
+    h += `<div class="cat adv"><div class="cat-h"><b>Changes between sets</b><button class="btn sm" id="btnAddsOmits" style="margin-left:auto">Priced report</button></div><div class="row" style="margin:6px 0"><select class="inp" id="setA" style="flex:1">${sets.map(s => `<option>${esc(s)}</option>`).join("")}</select><span class="muted">to</span><select class="inp" id="setB" style="flex:1">${sets.map((s, i) => `<option ${i === sets.length - 1 ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></div><div id="setDiff"></div></div>`;
   }
   el.innerHTML = h; $("#scopeSel").value = S.scope;
   if (sets.length > 1) { const upd = () => setDiff($("#setA").value, $("#setB").value); $("#setA").onchange = upd; $("#setB").onchange = upd; upd(); }
@@ -1687,7 +1702,9 @@ function renderQuote() {
   const ta = (k, label, rows = 4) => `<label class="field"><span>${label}</span><textarea class="inp" data-q="${k}" rows="${rows}">${esc(q[k] ?? "")}</textarea></label>`;
   el.innerHTML = `<div class="sumbar" style="grid-template-columns:1fr 1fr"><div class="sum"><div class="k">Quote total</div><div class="v">${money(t.total)}</div></div><div class="sum"><div class="k">Labour hours</div><div class="v">${fmt(t.hrs, 1)}</div></div></div>
    ${t.unpriced ? `<div class="warnbox">${t.unpriced} item${t.unpriced > 1 ? "s have" : " has"} no unit price. Add prices with the pencil in the Takeoff list.</div>` : ""}
-   ${copiesHtml()}
+   ${(() => { const old = t.lines.filter(l => priceOld(l.it)); return old.length ? `<div class="warnbox" style="flex-wrap:wrap"><span><b>${old.length}</b> price${old.length > 1 ? "s are" : " is"} more than ${PRICE_DAYS()} days old: ${old.slice(0, 4).map(l => esc(l.it.name)).join(", ")}${old.length > 4 ? "…" : ""}. Check them before sending.</span></div>` : ""; })()}
+   <div class="row"><button class="btn sm" id="qGaps" type="button">Check the bid for gaps</button></div>
+   <div class="adv" style="display:contents">${copiesHtml()}</div>
    <fieldset ${P().locked ? "disabled" : ""} style="display:contents">
    <div class="grid2">${f("client", "Client")}${f("attn", "Attention")}</div>${f("site", "Project / site address")}
    <div class="grid2">${f("quoteNo", "Quote no.")}${f("date", "Date", "date")}</div>
@@ -1696,25 +1713,25 @@ function renderQuote() {
    <label class="field"><span>Labour from</span><select class="inp" data-q="labourMode"><option value="items" ${q.labourMode === "items" ? "selected" : ""}>Hours per item (from the takeoff)</option><option value="crew" ${q.labourMode === "crew" ? "selected" : ""}>Crew size × days</option></select></label>
    <div class="grid2">${f("crew", "Crew size", "number", 'min="0"')}${f("days", "Working days", "number", 'min="0" step="0.5"')}${f("hpd", "Hours per day", "number", 'min="0"')}${f("rate", "Labour rate $/h (internal)", "number", 'min="0" step="0.01"')}</div>
    <div class="grid2">${f("labourFactor", "Labour difficulty % (height, access, occupied site)", "number", 'step="1"')}${f("markup", "Material markup %", "number", 'step="0.5"')}</div>
-   <details ${S.condOpen ? "open" : ""} id="condBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job conditions${condPct(q) ? ` · +${condPct(q)}% labour` : ""}</summary>
+   <details class="adv" ${S.condOpen ? "open" : ""} id="condBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job conditions${condPct(q) ? ` · +${condPct(q)}% labour` : ""}</summary>
     <p class="muted" style="margin:6px 0;font-size:12px">Tick what applies to this job. Each one adds labour time. The % are starting points: change them to match your crew.</p>
     ${CONDS.map(([k, l, v]) => `<div class="row" style="gap:6px"><label class="row" style="gap:6px;flex:1;min-width:0"><input type="checkbox" data-cond="${k}" ${(q.conds || {})[k] ? "checked" : ""}> ${l}</label><input class="inp" data-condv="${k}" type="number" step="1" value="${(q.condV || {})[k] ?? v}" style="width:64px" aria-label="${l} %"><span class="muted">%</span></div>`).join("")}</details>
    <div class="grid2">${f("other", "Other costs $", "number", 'step="0.01"')}${f("otherLbl", "Other costs label")}</div>
-   <div class="eyebrow">Supplier and sub quotes (lump sums)</div>
+   <div class="adv" style="display:contents"><div class="eyebrow">Supplier and sub quotes (lump sums)</div>
    <p class="muted" style="margin:0;font-size:12px">For packages priced as one number: lighting package, switchgear, fire alarm or a subcontractor.</p>
    ${(q.pkgs || []).map((x, i) => `<div class="row" style="gap:6px"><input class="inp" data-pkn="${i}" value="${esc(x.n || "")}" placeholder="Package (e.g. Lighting fixtures)" style="flex:2;min-width:0"><input class="inp" data-pkf="${i}" value="${esc(x.f || "")}" placeholder="Supplier" style="flex:1;min-width:0"><input class="inp" data-pkv="${i}" type="number" step="0.01" value="${x.v ?? ""}" placeholder="$" style="width:96px"><button class="btn ghost sm" data-pkdel="${i}" title="Remove">${svgI("trash", 15)}</button></div>`).join("")}
    <div class="row"><button class="btn sm" id="pkAdd" type="button">+ Add supplier quote</button>${(q.pkgs || []).length ? f("pkgMk", "Markup on quotes %", "number", 'step="0.5"') : ""}</div>
    <div class="eyebrow">Bid markups (internal, not shown to the client)</div>
    <div class="grid2">${f("contingency", "Contingency %", "number", 'step="0.5"')}${f("overhead", "Overhead %", "number", 'step="0.5"')}${f("profit", "Profit %", "number", 'step="0.5"')}${f("bond", "Bond %", "number", 'step="0.1"')}</div>
-   <label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
+   </div><label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
    </fieldset>
    <table class="t"><tr><td>Materials (with markup)</td><td class="r num">${money(t.matM)}</td></tr><tr><td>Labour${labF(q) ? ` (incl. ${labF(q)}% difficulty and conditions)` : ""}</td><td class="r num">${money(t.lab)}</td></tr>${t.pkg ? `<tr><td>Supplier and sub quotes</td><td class="r num">${money(t.pkg)}</td></tr>` : ""}${t.other ? `<tr><td>${esc(q.otherLbl || "Other")}</td><td class="r num">${money(t.other)}</td></tr>` : ""}${t.cont ? `<tr><td>Contingency</td><td class="r num">${money(t.cont)}</td></tr>` : ""}${t.oh ? `<tr><td>Overhead</td><td class="r num">${money(t.oh)}</td></tr>` : ""}${t.pf ? `<tr><td>Profit</td><td class="r num">${money(t.pf)}</td></tr>` : ""}${t.bond ? `<tr><td>Bond</td><td class="r num">${money(t.bond)}</td></tr>` : ""}<tr><td>Subtotal</td><td class="r num">${money(t.sub)}</td></tr><tr><td>${esc(CO.taxName)} ${CO.hst}%</td><td class="r num">${money(t.tax)}</td></tr><tr><td><b>Total</b></td><td class="r num"><b>${money(t.total)}</b></td></tr></table>
    ${t.alts.length ? `<div class="eyebrow">Alternates (priced separately)</div><table class="t">${t.alts.map(a => `<tr><td>${esc(a.it.name)} <span class="muted">${fmt(a.qty)} ${a.unit}</span></td><td class="r num">add ${money(a.sell)}</td></tr>`).join("")}</table>` : ""}
-   ${bidSummaryHtml(t)}
-   ${changeOrderHtml()}
+   <div class="adv" style="display:contents">${bidSummaryHtml(t)}
+   ${changeOrderHtml()}</div>
    ${q.sign ? `<div class="warnbox" style="background:var(--soft,#EEF4FF)">Signed by <b>${esc(q.sign.name)}</b> on ${new Date(q.sign.at).toLocaleString("en-CA")}${q.sign.alts?.length ? ` · alternates accepted: ${esc(q.sign.alts.join(", "))}` : ""}. The signature prints on the PDF quote. <button class="btn ghost sm" id="qUnsign">Clear</button></div>` : ""}
-   ${logHtml()}
-   <div class="row">${S.ai ? '<button class="btn" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn" id="qSign">Customer sign-off</button><button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
+   <div class="adv" style="display:contents">${logHtml()}</div>
+   <div class="row">${S.ai ? '<button class="btn adv" id="aiScope">Draft scope with AI</button>' : ""}<button class="btn" id="qSign">Customer sign-off</button><button class="btn primary" id="qWord">Quote → Word</button><button class="btn" id="qPdf">Quote → PDF</button></div>
    <p class="muted" style="font-size:12px;margin:0">The client quote shows total labour only, never hourly rates.</p>`;
 }
 
@@ -1807,7 +1824,7 @@ function copiesHtml() {
     : "";
   return `${lock}<details ${S.copiesOpen ? "open" : ""} id="copiesBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Saved copies of this bid (${list.length})</summary>
    <p class="muted" style="margin:6px 0;font-size:12.5px">Save a copy when you send a bid. The copy never changes, even if prices or quantities change later, and you can bring it back at any time. A copy is also saved each time you export the quote.</p>
-   <div class="row"><button class="btn sm" id="copySave" type="button">Save a copy now</button>${p.locked ? "" : `<button class="btn sm" id="bidLock" type="button" title="Stops all edits until you unlock">Lock this bid</button>`}</div>
+   <div class="row"><button class="btn sm" id="copySave" type="button">Save a copy now</button>${list.length ? `<button class="btn sm" id="copyCmp" type="button">Compare versions</button>` : ""}${p.locked ? "" : `<button class="btn sm" id="bidLock" type="button" title="Stops all edits until you unlock">Lock this bid</button>`}</div>
    ${list.length ? `<table class="t"><tr><th style="text-align:left">Copy</th><th class="r">Total</th><th></th></tr>${list.map(c => { const d = now - (c.total || 0); return `<tr><td>${esc(c.name)}<div class="muted" style="font-size:11.5px">${new Date(c.at).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div></td><td class="r num" style="white-space:nowrap">${money(c.total || 0)}<div class="muted" style="font-size:11.5px">${Math.abs(d) < 0.005 ? "same as now" : "now " + (d > 0 ? "+" : "−") + money(Math.abs(d))}</div></td><td class="r" style="white-space:nowrap">${p.locked ? "" : `<button class="btn sm" data-copyrestore="${c.id}" type="button">Restore</button>`}<button class="btn ghost sm" data-copydel="${c.id}" type="button" title="Delete this copy" aria-label="Delete this copy">${svgI("trash", 15)}</button></td></tr>`; }).join("")}</table>` : ""}</details>`;
 }
 function askCopyName() {
@@ -1938,8 +1955,8 @@ function renderSheets() {
   const el = $("#sheetList"); if (!el || !S.proj) return;
   if (!P().docs.length) { el.innerHTML = `<p class="muted" style="margin:6px;line-height:1.5">No drawings yet. Press <b>+ Add</b> or drop PDFs on the canvas.</p>`; return; }
   const noSc = P().pages.filter(g => !g.scale).length;
-  el.innerHTML = (noSc ? `<div class="warnbox" style="margin:6px;font-size:12.5px;display:block">${noSc} sheet${noSc > 1 ? "s have" : " has"} no scale yet, so lengths and areas there won't add up. Open the sheet, pick Scale, then "Use on chosen sheets".</div>` : "") + P().docs.map(d => `<div class="docgrp"><div class="docgrp-h"><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><button class="chip blue" data-setlbl="${d.id}" title="Rename this drawing set">${esc(d.set)}</button><button class="btn ghost sm" data-deldoc="${d.id}" title="Remove this drawing file" style="padding:2px">${svgI("trash", 14)}</button></div>` +
-    P().pages.map((g, i) => g.docId !== d.id ? "" : `<button class="sheet ${i === S.pageIdx ? "on" : ""}" data-page="${i}"><img class="th" alt="" ${thumbs[g.id] ? `src="${thumbs[g.id]}"` : ""} data-th="${g.id}"><span class="meta"><b>${esc(g.name)}</b><span class="row" style="gap:4px">${(() => { const n = P().marks.filter(m => m.page === g.id).length; return n ? `<span class="chip">${n} ticks</span>` : ""; })()}${g.scale ? "" : '<span class="chip amber">no scale</span>'}</span></span></button>`).join("") + `</div>`).join("");
+  el.innerHTML = sheetProgressHtml() + (noSc ? `<div class="warnbox" style="margin:6px;font-size:12.5px;display:block">${noSc} sheet${noSc > 1 ? "s have" : " has"} no scale yet, so lengths and areas there won't add up. Open the sheet, pick Scale, then "Use on chosen sheets".</div>` : "") + P().docs.map(d => `<div class="docgrp"><div class="docgrp-h"><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><button class="chip blue" data-setlbl="${d.id}" title="Rename this drawing set">${esc(d.set)}</button><button class="btn ghost sm" data-deldoc="${d.id}" title="Remove this drawing file" style="padding:2px">${svgI("trash", 14)}</button></div>` +
+    P().pages.map((g, i) => g.docId !== d.id || !sheetShown(g) ? "" : `<button class="sheet ${i === S.pageIdx ? "on" : ""}" data-page="${i}"><img class="th" alt="" ${thumbs[g.id] ? `src="${thumbs[g.id]}"` : ""} data-th="${g.id}"><span class="meta"><b>${esc(g.name)}</b><span class="row" style="gap:4px">${(() => { const n = P().marks.filter(m => m.page === g.id).length; return n ? `<span class="chip">${n} ticks</span>` : ""; })()}${g.scale ? "" : '<span class="chip amber">no scale</span>'}${sheetStatusChip(g)}</span></span></button>`).join("") + `</div>`).join("");
   queueThumbs();
 }
 let thumbBusy = false;
@@ -1985,7 +2002,7 @@ function editItem(id) {
    <label class="row" style="gap:6px"><input type="checkbox" id="eAlt" ${it.alt ? "checked" : ""}> Price as an alternate (shown separately, not in the base bid)</label>
    <label class="row" style="gap:6px"><input type="checkbox" id="ePB" checked> Save price, labour and materials to my price book (fills in on future jobs)</label>
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
-   <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
+   <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><button class="btn" id="eMove" type="button" title="Move this item's takeoff to another item, or swap the material">Move / swap</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
   let asm = JSON.parse(JSON.stringify(it.asm || []));
   const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
   const asmTot = () => { const t = asm.reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0); $("#asmTot").textContent = asm.length ? "Parts cost per " + unitOf(it) + ": " + money(t) : ""; };
@@ -1994,8 +2011,9 @@ function editItem(id) {
   $("#asmAdd").onclick = () => { asm.push({ n: "", q: 1, u: "ea", c: "" }); asmPaint(); };
   if ($("#asmStart")) $("#asmStart").onclick = () => { asm = asmStarter(it).map(([n, q, u]) => ({ n, q, u, c: "" })); asmPaint(); };
   asmPaint();
-  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
-  $("#eSave").onclick = save;
+  const save = () => { commit(); it.asm = asm.filter(m => String(m.n || "").trim()); it.name = $("#eName").value.trim() || it.name; it.cat = $("#eCat").value; it.color = $("#eCol").value; const pr = $("#ePrice").value, lb = $("#eLab").value; if ((pr === "" ? null : +pr) !== it.price) it.priceAt = Date.now(); it.price = pr === "" ? null : +pr; it.labour = lb === "" ? null : +lb; it.notes = $("#eNotes").value; if ($("#eWaste")) it.waste = +$("#eWaste").value || 0; if ($("#eSens")) { it.sens = +$("#eSens").value; it.rotate = $("#eRot").checked; it.mirror = $("#eMir").checked; it.multiScale = $("#eMS").checked; } it.alt = $("#eAlt").checked; it.sys = $("#eSys").value.trim(); it.phase = $("#ePhase").value.trim(); it.cc = $("#eCC").value.trim(); it.mfr = $("#eMfr").value.trim(); it.model = $("#eModel").value.trim(); it.spec = $("#eSpec").value.trim(); if ($("#ePB").checked) pbRemember(it); closeDialog(); changed(); };
+  $("#eSave").onclick = save; $("#eMove").onclick = () => { closeDialog(); moveTakeoff([it.id]); };
+  if (priceOld(it)) $("#ePrice").insertAdjacentHTML("afterend", `<small class="muted" style="color:var(--bad)">Set ${priceAge(it)} days ago</small>`);
   if ($("#eSaveCount")) $("#eSaveCount").onclick = async () => { save(); const r = await countItem(it, P().pages); changed({ sheets: true }); reportCount(it, r); };
   $("#eDel").onclick = () => { $("#eDel").outerHTML = `<span class="row"><b style="color:var(--bad)">Delete ${esc(it.name)} and its ticks?</b><button class="btn danger sm" id="eDel2">Yes, delete</button></span>`; $("#eDel2").onclick = () => { commit(); P().items = P().items.filter(i => i !== it); P().marks = P().marks.filter(m => m.item !== it.id); P().runs = P().runs.filter(r => r.item !== it.id); P().markups = P().markups.filter(m => m.item !== it.id); if (S.activeItem === it.id) S.activeItem = null; closeDialog(); changed({ sheets: true }); }; };
 }
@@ -2479,9 +2497,9 @@ function exportMenu(btn) {
   m.style.top = r.bottom + 6 + "px"; m.style.right = Math.max(8, innerWidth - r.right) + "px";
   m.innerHTML = `${S.scope !== "all" ? `<label class="row" style="gap:6px;padding:6px 12px;font-size:12.5px"><input type="checkbox" id="xScope" ${S.exportScope === "scope" ? "checked" : ""}> Only the sheets in the Takeoff filter</label>` : ""}<div class="grp">Quote</div><button data-x="qdocx">Quote <small>Word .docx</small></button><button data-x="qpdf">Quote <small>PDF</small></button>
    <div class="grp">Itemized takeoff</div><button data-x="txlsx">Takeoff <small>Excel .xlsx</small></button><button data-x="tdocx">Takeoff <small>Word .docx</small></button><button data-x="tpdf">Takeoff <small>PDF</small></button>
-   <div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button><button data-x="sub">Submittal package <small>Word</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}
+   <div class="grp">Accounting</div><button data-x="qbo">QuickBooks invoice <small>CSV</small></button><div class="adv"><div class="grp">Suppliers & changes</div><button data-x="rfq">Supplier price request <small>Excel</small></button><button data-x="sub">Submittal package <small>Word</small></button>${P().baseline ? '<button data-x="coxlsx">Change order <small>Excel</small></button>' : ""}</div>
    <div class="grp">Drawings</div><button data-x="mpdf">Marked-up drawings <small>PDF</small></button>
-   <div class="grp">Reuse</div><button data-x="tpl">Save as job template <small>for next time</small></button>`;
+   <div class="adv"><div class="grp">Reuse</div><button data-x="tpl">Save as job template <small>for next time</small></button></div>`;
   document.body.appendChild(m);
   m.onclick = async (e) => { if (e.target.id === "xScope") { S.exportScope = e.target.checked ? "scope" : "all"; e.stopPropagation(); return; } const b = e.target.closest("[data-x]"); if (!b) return; closeMenu(); await runExport(b.dataset.x); };
   setTimeout(() => document.addEventListener("click", closeMenu, { once: true }), 0);
@@ -2492,7 +2510,7 @@ async function runExport(x) {
     if (!P().items.length && x !== "mpdf") return toast("Count something first — the export is built from your takeoff.");
     if (x === "coxlsx" && !P().baseline) return toast("Lock the bid first in the Quote tab.");
     if (!CO.company) toast("Tip: add your company name in Company details on the Jobs screen. It prints on every quote.");
-    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate }[x];
+    busy(true, "Building file", ""); const f = { qdocx: exportQuoteDocx, qpdf: exportQuotePdf, txlsx: exportXlsx, tdocx: exportTakeoffDocx, tpdf: exportTakeoffPdf, mpdf: exportMarkedPdf, rfq: exportRFQ, coxlsx: exportChangeOrder, sub: exportSubmittal, tpl: saveAsTemplate, qbo: exportAccountingCsv }[x];
     await f();
     if (x === "qdocx" || x === "qpdf") { const q = P().quote; if (saveBidCopy("Quote " + (q.quoteNo || "") + " exported · " + dayStr(Date.now()), true) && S.tab === "quote") renderQuote(); }
   } catch (e) { console.error(e); toast("Export failed: " + (e.message || e)); } finally { busy(false); }
@@ -2506,6 +2524,217 @@ function openSettings() {
   $("#coSave").onclick = async () => { $$("[data-co]").forEach(i => CO[i.dataset.co] = i.dataset.co === "hst" ? +i.value || 0 : i.value); await IDB.put("kv", "company", CO); Cloud.putSettings({ company: CO }); closeDialog(); renderSide(); toast("Company details saved."); };
 }
 
+/* ------------------------- Nov 22 batch: estimating tools ------------------------- */
+/* Simple mode: hides advanced tools; nothing is lost, switch back any time. */
+let SIMPLE = false;
+try { SIMPLE = localStorage.getItem("tv-simple") === "1"; } catch (e) { }
+function applySimple() { document.body.classList.toggle("simple", SIMPLE); const b = $("#btnSimple"); if (b) { b.textContent = SIMPLE ? "Full mode" : "Simple mode"; b.title = SIMPLE ? "Show every tool again" : "Hide the advanced tools (alternates, cost codes, conditions, AI…). Nothing is lost."; } if (SIMPLE && S.tab === "ai" && S.proj) switchTab("takeoff"); }
+function toggleSimple() { SIMPLE = !SIMPLE; try { localStorage.setItem("tv-simple", SIMPLE ? "1" : "0"); } catch (e) { } applySimple(); if (S.proj) renderSide(); toast(SIMPLE ? "Simple mode on: only count, measure, price book and quote are shown. Turn it off any time." : "Full mode: every tool is back."); }
+
+/* Price age: each price remembers when it was set. */
+const PRICE_DAYS = () => +(CO.priceDays ?? 30) || 30;
+function priceAge(it) { if (priceOf(it) == null || !it.priceAt) return null; return Math.floor((Date.now() - it.priceAt) / 86400000); }
+const priceOld = (it) => { const a = priceAge(it); return a != null && a > PRICE_DAYS(); };
+
+/* Sheet progress status */
+const SHEET_ST = [["", "Not started", ""], ["prog", "In progress", "blue"], ["done", "Done", "green"], ["chk", "Checked", "green"]];
+function sheetStatusChip(g) { const s = SHEET_ST.find(x => x[0] === (g.status || "")) || SHEET_ST[0]; return `<span class="chip st-${s[0] || "none"}" role="button" tabindex="0" data-shst="${g.id}" title="Sheet status: ${s[1]}. Click to change.">${s[1]}</span>`; }
+function cycleSheetStatus(id) { const g = P().pages.find(x => x.id === id); if (!g) return; const i = SHEET_ST.findIndex(x => x[0] === (g.status || "")); g.status = SHEET_ST[(i + 1) % SHEET_ST.length][0] || undefined; markDirty(); renderSheets(); }
+function sheetProgressHtml() {
+  const pg = P().pages; if (pg.length < 2) return "";
+  const done = pg.filter(g => g.status === "done" || g.status === "chk").length, prog = pg.filter(g => g.status === "prog").length, pct = Math.round(done / pg.length * 100);
+  const f = S.sheetFilter || "";
+  return `<div class="shprog"><div class="row" style="gap:6px;font-size:12px"><b>${done} of ${pg.length} done</b>${prog ? `<span class="muted">· ${prog} in progress</span>` : ""}<span class="spacer"></span><select class="inp" id="shFilter" style="width:auto;padding:2px 6px;font-size:12px" aria-label="Show sheets"><option value="">All sheets</option><option value="todo" ${f === "todo" ? "selected" : ""}>Not done yet</option><option value="prog" ${f === "prog" ? "selected" : ""}>In progress</option><option value="done" ${f === "done" ? "selected" : ""}>Done or checked</option></select></div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+}
+function sheetShown(g) { const f = S.sheetFilter; if (!f) return true; if (f === "todo") return g.status !== "done" && g.status !== "chk"; if (f === "done") return g.status === "done" || g.status === "chk"; return g.status === f; }
+
+/* Bulk select / edit items */
+S.bulk = false; S.bsel = new Set();
+function bulkBar() {
+  if (!S.bulk) return "";
+  const n = S.bsel.size;
+  return `<div class="bulkbar"><b>${n} selected</b><button class="btn sm" data-bk="all" type="button">All</button><button class="btn sm" data-bk="none" type="button">None</button><span class="spacer"></span><button class="btn sm primary" data-bk="edit" type="button" ${n ? "" : "disabled"}>Edit together</button><button class="btn sm" data-bk="move" type="button" ${n ? "" : "disabled"}>Move / swap</button><button class="btn sm ghost" data-bk="done" type="button">Done</button></div>`;
+}
+function bulkEdit() {
+  const its = P().items.filter(i => S.bsel.has(i.id)); if (!its.length) return;
+  const same = (k) => { const v = its[0][k]; return its.every(i => (i[k] ?? "") === (v ?? "")) ? (v ?? "") : ""; };
+  openDialog(`<div class="dlg-h"><h3>Edit ${its.length} items together</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Only the boxes you fill in change. Leave a box empty to keep each item's own value.</p>
+   <div class="grid2"><label class="field"><span>Unit price $</span><input class="inp" id="bPrice" type="number" step="0.01" min="0" placeholder="keep" value="${same("price")}"></label><label class="field"><span>Labour hours per unit</span><input class="inp" id="bLab" type="number" step="0.01" min="0" placeholder="keep" value="${same("labour")}"></label></div>
+   <div class="grid2"><label class="field"><span>Category</span><select class="inp" id="bCat"><option value="">keep</option>${catsAll(P().items).map(c => `<option>${esc(c)}</option>`).join("")}</select></label><label class="field"><span>Colour</span><select class="inp" id="bCol"><option value="">keep</option>${COLORS.map(c => `<option value="${c}" style="color:${c}">■ ${c}</option>`).join("")}</select></label></div>
+   <div class="grid2"><label class="field"><span>System</span><input class="inp" id="bSys" placeholder="keep" value="${esc(same("sys"))}"></label><label class="field"><span>Phase / area</span><input class="inp" id="bPhase" placeholder="keep" value="${esc(same("phase"))}"></label></div>
+   <div class="grid2"><label class="field"><span>Cost code</span><input class="inp" id="bCC" placeholder="keep" value="${esc(same("cc"))}"></label><label class="field"><span>Waste / extra % (runs and areas)</span><input class="inp" id="bWaste" type="number" step="1" min="0" placeholder="keep"></label></div>
+   <label class="field adv"><span>Alternate</span><select class="inp" id="bAlt"><option value="">keep</option><option value="1">Price as alternates</option><option value="0">In the base bid</option></select></label>
+   <label class="row" style="gap:6px"><input type="checkbox" id="bPB" checked> Save new prices and labour to my price book</label></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="bOk">Apply to ${its.length} items</button></div>`);
+  $("#bOk").onclick = () => {
+    const v = (id) => $(id).value.trim(); commit(); let n = 0;
+    for (const it of its) {
+      if (v("#bPrice") !== "") { const np = +v("#bPrice"); if (np !== it.price) { it.price = np; it.priceAt = Date.now(); } }
+      if (v("#bLab") !== "") it.labour = +v("#bLab");
+      if (v("#bCat")) it.cat = v("#bCat"); if (v("#bCol")) it.color = v("#bCol");
+      if (v("#bSys") !== "") it.sys = v("#bSys"); if (v("#bPhase") !== "") it.phase = v("#bPhase"); if (v("#bCC") !== "") it.cc = v("#bCC");
+      if (v("#bWaste") !== "" && it.kind !== "count") it.waste = +v("#bWaste") || 0;
+      if (v("#bAlt") !== "") it.alt = v("#bAlt") === "1";
+      if ($("#bPB").checked && (v("#bPrice") !== "" || v("#bLab") !== "")) pbRemember(it); n++;
+    }
+    closeDialog(); changed(); toast(`${n} items updated. Ctrl+Z undoes.`);
+  };
+}
+
+/* Move takeoff to another item, or swap a material across the bid (with the cost difference first). */
+function moveTakeoff(fromIds) {
+  const froms = P().items.filter(i => fromIds.includes(i.id)); if (!froms.length) return;
+  const kind = froms[0].kind; if (froms.some(i => i.kind !== kind)) return toast("Pick items of one type (counts, runs or areas) to move together.");
+  const targets = P().items.filter(i => i.kind === kind && !fromIds.includes(i.id));
+  const pbRows = Object.values(PB).filter(e => (e.kind || "count") === kind && !P().items.some(i => pbKey(i.name) === pbKey(e.name))).sort((a, b) => a.name.localeCompare(b.name));
+  const sets = [...new Set(P().docs.map(d => d.set))];
+  openDialog(`<div class="dlg-h"><h3>Move or swap ${froms.length > 1 ? froms.length + " items" : esc(froms[0].name)}</h3></div><div class="dlg-b">
+   <p class="muted" style="margin:0;font-size:12.5px">Every tick, run or area of ${froms.length > 1 ? "these items" : "this item"} goes to the item you pick, without recounting. Use it to fix "counted under the wrong type", or to swap a material (say EMT for MC cable) and see what it does to the price.</p>
+   <label class="field"><span>Move to</span><select class="inp" id="mvTo">${targets.map(i => `<option value="${i.id}">${esc(i.name)}</option>`).join("")}${pbRows.length ? `<optgroup label="From my price book (adds a new item)">${pbRows.map(e => `<option value="pb:${esc(pbKey(e.name))}">${esc(e.name)}</option>`).join("")}</optgroup>` : ""}<option value="__new">New item…</option></select></label>
+   <input class="inp" id="mvNew" placeholder="New item name" hidden>
+   <label class="field"><span>Where</span><select class="inp" id="mvWhere"><option value="all">Every sheet</option><option value="page">This sheet only</option>${sets.length > 1 ? sets.map(s => `<option value="set:${esc(s)}">${esc(s)} only</option>`).join("") : ""}</select></label>
+   <label class="row" style="gap:6px"><input type="checkbox" id="mvDel" checked> Remove ${froms.length > 1 ? "items" : "the item"} left empty afterwards</label>
+   <div id="mvCost" class="warnbox" style="display:block"></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="mvOk">Move</button></div>`);
+  const where = () => { const w = $("#mvWhere").value; if (w === "page") return new Set([page()?.id]); if (w.startsWith("set:")) return new Set(P().pages.filter(g => docOf(g).set === w.slice(4)).map(g => g.id)); return new Set(P().pages.map(g => g.id)); };
+  const target = () => { const v = $("#mvTo").value; if (v === "__new") return { name: $("#mvNew").value.trim() || "New item", kind, price: null, labour: null, asm: [] }; if (v.startsWith("pb:")) { const e = PB[v.slice(3)]; return { ...e, kind }; } return itemOf(v); };
+  const cost = (it, qty) => { const qr = kind !== "count" ? Math.ceil(qty) : qty, c = lineCost(it, qr); return markupsOn(c.matM + c.lab).sell; };
+  const preview = () => {
+    $("#mvNew").hidden = $("#mvTo").value !== "__new";
+    const t = target(), pgs = where(); if (!t) { $("#mvCost").textContent = "Add another item of the same type first, or pick New item."; return; }
+    let before = 0, after = 0, moved = 0;
+    for (const it of froms) { const q = qtyOf(it, pgs); moved += q; before += cost(it, q); }
+    after = cost(t, moved);
+    const d = after - before, unpriced = priceOf(t) == null;
+    $("#mvCost").innerHTML = `<b>${fmt(moved, kind === "count" ? 0 : 1)} ${unitOf(froms[0])}</b> move to <b>${esc(t.name)}</b>.<br>Selling price for that quantity: ${money(before)} now → ${money(after)} after, <b style="color:${d > 0.005 ? "var(--bad)" : d < -0.005 ? "var(--ok)" : "inherit"}">${d > 0.005 ? "+" : d < -0.005 ? "−" : ""}${money(Math.abs(d))}</b> before tax.${unpriced ? `<br><span class="muted">${esc(t.name)} has no price yet, so the after figure counts labour only.</span>` : ""}`;
+  };
+  $("#mvTo").onchange = preview; $("#mvWhere").onchange = preview; $("#mvNew").oninput = preview; preview();
+  $("#mvOk").onclick = () => {
+    let t = target(); if (!t) return; commit();
+    if (!t.id) { const ni = newItem({ name: t.name, kind, cat: t.cat || froms[0].cat, price: t.price, labour: t.labour }); if (t.asm?.length) ni.asm = JSON.parse(JSON.stringify(t.asm)); if (t.at) ni.priceAt = t.priceAt || t.at; P().items.push(ni); t = ni; }
+    const pgs = where(), ids = new Set(froms.map(i => i.id)); let n = 0;
+    for (const m of P().marks) if (ids.has(m.item) && pgs.has(m.page)) { m.item = t.id; n++; }
+    for (const r of P().runs) if (ids.has(r.item) && pgs.has(r.page)) { r.item = t.id; n++; }
+    for (const mk of P().markups) if (mk.item && ids.has(mk.item) && pgs.has(mk.page)) { mk.item = t.id; n++; }
+    if ($("#mvDel").checked) { const left = (id) => P().marks.some(m => m.item === id) || P().runs.some(r => r.item === id) || P().markups.some(m => m.item === id); P().items = P().items.filter(i => !ids.has(i.id) || left(i.id)); }
+    S.bsel.clear(); closeDialog(); changed({ sheets: true }); toast(`${n} ${n === 1 ? "piece" : "pieces"} of takeoff moved to ${t.name}. Ctrl+Z undoes.`);
+  };
+}
+
+/* Count by text label: every match of a tag becomes a tick on an item. */
+function textCountUI(hits, q) {
+  const box = $("#fcount"); if (!box) return;
+  if (!hits.length) { box.innerHTML = ""; return; }
+  const counts = P().items.filter(i => i.kind === "count");
+  box.innerHTML = `<details style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Count these as an item</summary>
+   <p class="muted" style="margin:6px 0;font-size:12.5px">For devices drawn as text tags (WP, GFI, EF-1). Each match gets a tick; ones already ticked are skipped.</p>
+   <div class="row" style="gap:6px"><select class="inp" id="fcItem" style="flex:1">${counts.map(i => `<option value="${i.id}" ${S.activeItem === i.id ? "selected" : ""}>${esc(i.name)}</option>`).join("")}<option value="__new" ${counts.length ? "" : "selected"}>New item named "${esc(q)}"</option></select></div>
+   <label class="row" style="gap:6px;margin-top:6px"><input type="checkbox" id="fcWhole" checked> Whole tag only (WP finds "WP", not "WPX")</label>
+   <div class="row" style="margin-top:6px"><span class="muted" id="fcN"></span><span class="spacer"></span><button class="btn sm primary" id="fcGo" type="button">Add ticks</button></div></details>`;
+  const pick = () => { const whole = $("#fcWhole").checked, ql = q.toLowerCase(); const re = new RegExp("(^|[^a-z0-9])" + ql.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "($|[^a-z0-9])", "i"); return hits.filter(h => !whole || re.test(h.t.s)); };
+  const upd = () => { $("#fcN").textContent = pick().length + " matches"; }; $("#fcWhole").onchange = upd; upd();
+  $("#fcGo").onclick = () => {
+    if (P().locked) return lockGuard(); const hs = pick(); if (!hs.length) return toast("No whole-tag matches. Untick \"Whole tag only\" to use every hit.");
+    commit(); let it = itemOf($("#fcItem").value); if (!it) { it = newItem({ name: q, kind: "count", cat: CATS[0] }); P().items.push(it); }
+    let n = 0, skip = 0;
+    for (const h of hs) { const x = h.t.x + h.t.w / 2, y = h.t.y + h.t.h / 2, tol = Math.max(h.t.h, 12); if (P().marks.some(m => m.page === h.g.id && m.item === it.id && Math.hypot(m.x - x, m.y - y) < tol)) { skip++; continue; } P().marks.push({ id: uid(), item: it.id, page: h.g.id, x, y, src: "text" }); n++; }
+    S.activeItem = it.id; closeDialog(); changed({ sheets: true }); toast(`${n} ticks added to ${it.name}${skip ? ` (${skip} already ticked)` : ""}. Check them on each sheet; click a tick to remove it.`);
+  };
+}
+
+/* Check the bid for likely gaps. */
+function bidGaps() {
+  const p = P(), all = new Set(p.pages.map(g => g.id)), out = [];
+  const add = (kind, text, act) => out.push({ kind, text, act });
+  for (const it of p.items) {
+    const q = qtyOf(it, all);
+    if (!q) { add("Empty item", `${it.name} is on the list but nothing is counted or measured.`, { item: it.id }); continue; }
+    if (priceOf(it) == null) add("No price", `${it.name} (${fmt(q, it.kind === "count" ? 0 : 1)} ${unitOf(it)}) has no unit price or priced parts.`, { item: it.id });
+    if (it.labour == null && p.quote.labourMode !== "crew") add("No labour", `${it.name} has no labour hours, so its install time isn't in the bid.`, { item: it.id });
+    if (it.kind === "count" && !it.asm?.length && priceOf(it) == null && asmStarter(it)) add("No materials", `${it.name} has no parts list (box, wire, plate…). Use "Start from a typical assembly" in the item.`, { item: it.id });
+    if (it.kind === "length" && !it.asm?.length && /conduit|pipe|duct|emt|pvc|tray/i.test(it.name)) add("No fittings", `${it.name} has no fittings or supports in its parts list (couplings, connectors, straps, hangers).`, { item: it.id });
+    if (priceOld(it)) add("Old price", `${it.name}: price set ${priceAge(it)} days ago.`, { item: it.id });
+    if (it.maybes?.length) add("Not reviewed", `${it.name} has ${it.maybes.length} possible matches still waiting for a look.`, { review: it.id });
+  }
+  for (let i = 0; i < p.pages.length; i++) {
+    const g = p.pages[i], has = p.marks.some(m => m.page === g.id) || p.runs.some(r => r.page === g.id) || p.markups.some(m => m.page === g.id && m.item);
+    const measured = p.runs.some(r => r.page === g.id) || p.markups.some(m => m.page === g.id && m.type === "area");
+    if (!g.scale && measured) add("No scale", `${g.name} has runs or areas but no scale, so they add nothing.`, { page: i });
+    else if (!has && !g.excl && p.pages.length > 1) add("Sheet not touched", `${g.name} has no counts, runs or areas.`, { page: i });
+  }
+  if (!p.quote.client) add("Quote", "The quote has no client name.", { tab: "quote" });
+  if (!(+p.quote.rate) ) add("Quote", "Labour rate is $0, so labour adds nothing.", { tab: "quote" });
+  return out;
+}
+function showBidGaps() {
+  const g = bidGaps();
+  openDialog(`<div class="dlg-h"><h3>Check the bid for gaps</h3><span class="chip ${g.length ? "amber" : ""}">${g.length ? g.length + " to look at" : "all clear"}</span></div><div class="dlg-b">
+   ${g.length ? `<p class="muted" style="margin:0;font-size:12.5px">Likely gaps found by simple rules. Not every one is a mistake: skip what doesn't apply.</p><div style="max-height:56vh;overflow:auto;display:grid;gap:4px">${g.map((x, i) => `<div class="row" style="border:1px solid var(--line);border-radius:8px;padding:6px 8px;gap:8px;flex-wrap:nowrap"><span class="chip amber" style="flex:none">${esc(x.kind)}</span><span style="flex:1;min-width:0;font-size:13px">${esc(x.text)}</span><button class="btn sm" data-gap="${i}" type="button">${x.act.page != null ? "Open sheet" : x.act.review ? "Review" : x.act.tab ? "Open quote" : "Fix"}</button></div>`).join("")}</div>` : `<p style="margin:0">No gaps found: every item has a quantity, price and labour, and every sheet has been worked on.</p>`}</div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  $$("[data-gap]").forEach(b => b.onclick = () => { const a = g[+b.dataset.gap].act; closeDialog(); if (a.item) editItem(a.item); else if (a.review) reviewMaybes(itemOf(a.review)); else if (a.page != null) openPage(a.page); else if (a.tab) switchTab(a.tab); });
+}
+
+/* Compare two saved copies (or a copy with now). */
+function withData(o, fn) {
+  const real = S.proj, scales = new Map((o.pages || []).map(g => [g.id, g]));
+  const tmp = { ...real, items: o.items, marks: o.marks || [], runs: o.runs || [], markups: o.markups || [], quote: o.quote || real.quote, pages: real.pages.map(g => scales.has(g.id) ? { ...g, scale: scales.get(g.id).scale, excl: scales.get(g.id).excl, name: scales.get(g.id).name } : g) };
+  S.proj = tmp; try { return fn(); } finally { S.proj = real; }
+}
+function bidFacts(o) {
+  return withData(o, () => { const t = totals(), all = new Set(P().pages.map(g => g.id)), items = {}; for (const it of P().items) { const q = qtyOf(it, all); items[it.id] = { name: it.name, unit: unitOf(it), q: it.kind !== "count" ? Math.ceil(q) : q, price: priceOf(it), alt: !!it.alt }; } return { total: t.total, sub: t.sub, hrs: t.hrs, mat: t.matM, lab: t.lab, items }; });
+}
+function compareCopies() {
+  const p = P(), list = p.copies || []; if (!list.length) return toast("Save a copy of the bid first.");
+  const opts = [`<option value="now">Now (current bid)</option>`, ...list.map(c => `<option value="${c.id}">${esc(c.name)}${c.name.includes(dayStr(c.at)) ? "" : " · " + dayStr(c.at)}</option>`)].join("");
+  openDialog(`<div class="dlg-h"><h3>Compare two versions of the bid</h3></div><div class="dlg-b"><div class="row" style="gap:6px;flex-wrap:nowrap"><select class="inp" id="cmA" style="flex:1;min-width:0">${opts}</select><span class="muted">to</span><select class="inp" id="cmB" style="flex:1;min-width:0">${opts}</select></div><div id="cmOut"></div></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  $("#cmA").value = list[0].id; $("#cmB").value = "now";
+  const facts = (v) => v === "now" ? bidFacts(JSON.parse(bidData(p))) : bidFacts(JSON.parse(list.find(c => c.id === v).d));
+  const run = () => {
+    const A = facts($("#cmA").value), B = facts($("#cmB").value), d = (a, b, m = true) => { const x = b - a; return `<span style="color:${x > 0.005 ? "var(--bad)" : x < -0.005 ? "var(--ok)" : "inherit"}">${Math.abs(x) < 0.005 ? "same" : (x > 0 ? "+" : "−") + (m ? money(Math.abs(x)) : fmt(Math.abs(x), 1))}</span>`; };
+    const ids = [...new Set([...Object.keys(A.items), ...Object.keys(B.items)])], rows = [];
+    for (const id of ids) { const a = A.items[id], b = B.items[id]; const qa = a?.q || 0, qb = b?.q || 0, pa = a?.price, pb = b?.price; if (qa === qb && (pa ?? null) === (pb ?? null)) continue; const what = !a || !qa ? "added" : !b || !qb ? "removed" : qa !== qb && (pa ?? null) !== (pb ?? null) ? "qty and price" : qa !== qb ? "quantity" : "price"; rows.push(`<tr><td>${esc((b || a).name)}${(b || a).alt ? ' <span class="chip amber" style="font-size:10px;padding:0 4px">alt</span>' : ""}<div class="muted" style="font-size:11.5px">${what}</div></td><td class="r num">${fmt(qa)} → ${fmt(qb)} <small class="muted">${esc((b || a).unit)}</small></td><td class="r num">${pa == null ? "—" : money(pa)} → ${pb == null ? "—" : money(pb)}</td></tr>`); }
+    $("#cmOut").innerHTML = `<table class="t"><tr><th style="text-align:left"></th><th class="r">From</th><th class="r">To</th><th class="r">Change</th></tr><tr><td>Total with tax</td><td class="r num">${money(A.total)}</td><td class="r num">${money(B.total)}</td><td class="r num">${d(A.total, B.total)}</td></tr><tr><td>Materials</td><td class="r num">${money(A.mat)}</td><td class="r num">${money(B.mat)}</td><td class="r num">${d(A.mat, B.mat)}</td></tr><tr><td>Labour hours</td><td class="r num">${fmt(A.hrs, 1)}</td><td class="r num">${fmt(B.hrs, 1)}</td><td class="r num">${d(A.hrs, B.hrs, false)}</td></tr></table>
+     <div class="eyebrow" style="margin-top:8px">Items that changed (${rows.length})</div>${rows.length ? `<div style="max-height:40vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Item</th><th class="r">Quantity</th><th class="r">Unit price</th></tr>${rows.join("")}</table></div>` : `<p class="muted" style="margin:4px 0">No item quantities or prices changed. Any difference comes from quote settings (markups, labour rate, conditions).</p>`}`;
+  };
+  $("#cmA").onchange = run; $("#cmB").onchange = run; run();
+}
+
+/* Price book CSV import with a preview of each price change. */
+function previewPriceImport(rows) {
+  const ch = rows.map(r => { const k = pbKey(r.name), e = PB[k]; const old = e?.price ?? null; return { ...r, k, old, isNew: !e, pct: old && r.price != null ? (r.price - old) / old * 100 : null }; });
+  const changedRows = ch.filter(r => r.isNew || r.old !== r.price || (PB[r.k]?.labour ?? null) !== r.labour);
+  openDialog(`<div class="dlg-h"><h3>Check the price update</h3><span class="chip">${changedRows.length} of ${rows.length} change</span></div><div class="dlg-b">
+   ${changedRows.length ? `<div style="max-height:52vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Item</th><th class="r">Old</th><th class="r">New</th><th class="r">Change</th></tr>${changedRows.map(r => `<tr><td>${esc(r.name)}${r.isNew ? ' <span class="chip blue" style="font-size:10px;padding:0 4px">new</span>' : ""}</td><td class="r num">${r.old == null ? "—" : money(r.old)}</td><td class="r num">${r.price == null ? "—" : money(r.price)}</td><td class="r num" style="color:${r.pct > 0 ? "var(--bad)" : r.pct < 0 ? "var(--ok)" : "inherit"}">${r.pct == null ? "" : (r.pct > 0 ? "+" : "") + fmt(r.pct, 1) + "%"}</td></tr>`).join("")}</table></div>` : `<p style="margin:0">Every price in the file matches your price book already.</p>`}
+   <label class="row" style="gap:6px"><input type="checkbox" id="piJobs" checked> Also update matching items on the open job</label></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="piOk" ${changedRows.length ? "" : "disabled"}>Accept ${changedRows.length} changes</button></div>`);
+  if (!S.proj) $("#piJobs").closest("label").hidden = true;
+  $("#piOk").onclick = () => {
+    const now = Date.now(); let jobN = 0; const upd = $("#piJobs").checked && S.proj && !P().locked;
+    if (upd) commit();
+    for (const r of changedRows) { PB[r.k] = { ...(PB[r.k] || { name: r.name, asm: [] }), name: r.name, price: r.price, labour: r.labour, at: now };
+      if (upd) for (const it of P().items) if (pbKey(it.name) === r.k) { if (it.price !== r.price) { it.price = r.price; it.priceAt = now; } it.labour = r.labour; jobN++; } }
+    pbSave(); closeDialog(); if (upd && jobN) changed(); toast(`${changedRows.length} price book items updated${jobN ? `, ${jobN} on this job` : ""}.`);
+  };
+}
+
+/* Accounting export: QuickBooks Online invoice-import CSV (also opens in Excel). Lines are at selling price, so they add up to the quote subtotal. */
+function exportAccountingCsv() {
+  const p = P(), q = p.quote, t = totals(), k = t.k || 1, rows = [];
+  const cust = q.client || "Customer", no = q.quoteNo || "", date = q.date || new Date().toISOString().slice(0, 10);
+  const due = new Date(new Date(date + "T12:00").getTime() + 30 * 86400000).toISOString().slice(0, 10), tax = (CO.taxName || "HST") + (CO.hst ? " " + CO.hst + "%" : "");
+  const line = (item, desc, qty, amt) => { const a = Math.round(amt * 100) / 100; if (Math.abs(a) < 0.005) return; rows.push({ item, desc, qty, rate: qty ? Math.round(a / qty * 10000) / 10000 : a, amt: a }); };
+  for (const l of t.lines) { const c = lineCost(l.it, l.qty); const base = c.matM + (q.labourMode === "crew" ? 0 : c.lab); line(l.it.name, [l.it.cc, l.it.sys, l.it.phase].filter(Boolean).join(" · ") || l.it.cat || "", l.qty, base * k); }
+  if (q.labourMode === "crew") line("Labour", `${fmt(t.hrs, 1)} hours`, 1, t.lab * k);
+  for (const x of q.pkgs || []) if (+x.v) line(x.n || "Supplier quote", x.f || "", 1, (+x.v || 0) * (1 + (+q.pkgMk || 0) / 100) * k);
+  if (t.other) line(q.otherLbl || "Other", "", 1, t.other * k);
+  const sum = rows.reduce((a, r) => a + r.amt, 0), diff = Math.round((t.sub - sum) * 100) / 100;
+  if (rows.length && Math.abs(diff) >= 0.01) { const r = rows[rows.length - 1]; r.amt = Math.round((r.amt + diff) * 100) / 100; r.rate = r.qty ? Math.round(r.amt / r.qty * 10000) / 10000 : r.amt; }
+  const c = (v) => { const s = String(v ?? ""); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = ["InvoiceNo,Customer,InvoiceDate,DueDate,Item(Product/Service),ItemDescription,ItemQuantity,ItemRate,ItemAmount,ItemTaxCode,Memo", ...rows.map(r => [no, cust, date, due, r.item, r.desc, r.qty, r.rate.toFixed(4), r.amt.toFixed(2), tax, p.name].map(c).join(","))].join("\r\n");
+  saveFile(slug(p.name) + "-quickbooks.csv", new Blob(["﻿" + csv], { type: "text/csv" }));
+  toast(`Saved ${rows.length} lines (${money(t.sub)} before tax). In QuickBooks Online: Settings → Import data → Invoices, then pick this file.`);
+}
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
@@ -2514,7 +2743,7 @@ function bind() {
   $("#btnPB").onclick = openPriceBook;
   document.addEventListener("click", (e) => { if (e.target.id === "btnFind") findText(); if (e.target.id === "btnAddsOmits") addsOmits(); }); $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
-  $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome;
+  $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome; $("#btnSimple").onclick = toggleSimple;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
   $("#fileAdd").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
   const hd = $("#homeDrop"); ["dragenter", "dragover"].forEach(ev => hd.addEventListener(ev, e => { e.preventDefault(); hd.classList.add("over"); })); ["dragleave", "drop"].forEach(ev => hd.addEventListener(ev, e => { e.preventDefault(); hd.classList.remove("over"); }));
@@ -2550,11 +2779,13 @@ function bind() {
   c.addEventListener("dblclick", () => { if (S.draft?.pts) finishDraft(); });
   c.addEventListener("wheel", (e) => { e.preventDefault(); const r = c.getBoundingClientRect(); if (e.ctrlKey || !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left, e.clientY - r.top); else { S.panX -= e.deltaX; S.panY -= e.deltaY; draw(); } }, { passive: false });
   $("#sheetList").onclick = (e) => {
+    const st = e.target.closest("[data-shst]"); if (st) { e.stopPropagation(); return cycleSheetStatus(st.dataset.shst); }
     const sl = e.target.closest("[data-setlbl]"); if (sl) { const d = P().docs.find(x => x.id === sl.dataset.setlbl); openDialog(`<div class="dlg-h"><h3>Drawing set name</h3></div><div class="dlg-b"><p class="muted" style="margin:0">Name the issue this file belongs to, e.g. "Issued for tender", "Addendum 1", "Rev 2".</p><input class="inp" id="setNm" value="${esc(d.set)}"></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="setOk">Save</button></div>`); $("#setOk").onclick = () => { d.set = $("#setNm").value.trim() || d.set; closeDialog(); changed({ sheets: true }); }; return; }
     const dd = e.target.closest("[data-deldoc]"); if (dd) { const d = P().docs.find(x => x.id === dd.dataset.deldoc); openDialog(`<div class="dlg-h"><h3>Remove ${esc(d.name)}?</h3></div><div class="dlg-b"><p style="margin:0">Its sheets and every count, run and markup on them are removed from this job. Undo brings them back.</p></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn danger" id="ddOk">Remove</button></div>`); $("#ddOk").onclick = () => { commit(); const ids = new Set(P().pages.filter(g => g.docId === d.id).map(g => g.id)); P().pages = P().pages.filter(g => !ids.has(g.id)); P().docs = P().docs.filter(x => x !== d); P().marks = P().marks.filter(m => !ids.has(m.page)); P().runs = P().runs.filter(m => !ids.has(m.page)); P().markups = P().markups.filter(m => !ids.has(m.page)); closeDialog(); changed({ sheets: true }); openPage(0); }; return; }
     const b = e.target.closest("[data-page]"); if (b) { openPage(+b.dataset.page); $("#rail").classList.remove("open"); }
   };
-  $("#sheetList").ondblclick = (e) => { const b = e.target.closest("[data-page]"); if (!b) return; const g = P().pages[+b.dataset.page]; openDialog(`<div class="dlg-h"><h3>Rename sheet</h3></div><div class="dlg-b"><input class="inp" id="shNm" value="${esc(g.name)}"></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="shOk">Save</button></div>`); $("#shOk").onclick = () => { commit(); g.name = $("#shNm").value.trim() || g.name; closeDialog(); changed({ sheets: true }); }; };
+  $("#sheetList").onchange = (e) => { if (e.target.id === "shFilter") { S.sheetFilter = e.target.value; renderSheets(); } };
+  $("#sheetList").ondblclick = (e) => { if (e.target.closest("[data-shst],#shFilter")) return; const b = e.target.closest("[data-page]"); if (!b) return; const g = P().pages[+b.dataset.page]; openDialog(`<div class="dlg-h"><h3>Rename sheet</h3></div><div class="dlg-b"><input class="inp" id="shNm" value="${esc(g.name)}"></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="shOk">Save</button></div>`); $("#shOk").onclick = () => { commit(); g.name = $("#shNm").value.trim() || g.name; closeDialog(); changed({ sheets: true }); }; };
   $$(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   $("#pane-takeoff").onclick = (e) => {
     const t = (a) => e.target.closest(`[data-${a}]`);
@@ -2564,10 +2795,14 @@ function bind() {
     if (t("review")) return reviewMaybes(itemOf(t("review").dataset.review));
     if (t("mball")) return resolveAllMaybes(t("mball").dataset.mball === "yes");
     if (e.target.id === "addManual" || e.target.id === "addPreset") return addManualItem();
+    if (e.target.id === "bulkOn") { S.bulk = true; S.bsel.clear(); return renderTakeoff(); }
+    if (e.target.id === "btnGaps") return showBidGaps();
+    if (t("bk")) { const a = t("bk").dataset.bk; if (a === "all") P().items.filter(i => !S.itemQ || i.name.toLowerCase().includes(S.itemQ.toLowerCase())).forEach(i => S.bsel.add(i.id)); if (a === "none") S.bsel.clear(); if (a === "done") { S.bulk = false; S.bsel.clear(); } if (a === "edit") return bulkEdit(); if (a === "move") return moveTakeoff([...S.bsel]); return renderTakeoff(); }
+    if (S.bulk && t("item")) { const id = t("item").dataset.item; S.bsel.has(id) ? S.bsel.delete(id) : S.bsel.add(id); return renderTakeoff(); }
     const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure" && S.tool !== "circuit") setTool("measure"); else renderSubbar(); } else if (it.kind === "area") { S.areaItem = id; if (S.tool !== "area") setTool("area"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
   };
   $("#pane-takeoff").addEventListener("input", (e) => { if (e.target.id === "itemSearch") { S.itemQ = e.target.value; const pos = e.target.selectionStart; renderTakeoff(); const n = $("#itemSearch"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } } });
-  $("#pane-takeoff").ondblclick = (e) => { const r = e.target.closest("[data-item]"); if (r) editItem(r.dataset.item); };
+  $("#pane-takeoff").ondblclick = (e) => { if (S.bulk) return; const r = e.target.closest("[data-item]"); if (r) editItem(r.dataset.item); };
   $("#pane-takeoff").onchange = (e) => { if (e.target.id === "scopeSel") { S.scope = e.target.value; renderTakeoff(); }
     if (e.target.id === "jobTrade") { const t = e.target.value; commit(); const old = TRADES[P().trade]; P().trade = t; CATS = TRADES[t].cats.slice(); if (P().quote.scope === old.scope) P().quote.scope = TRADES[t].scope; if (P().quote.excl === old.excl) P().quote.excl = TRADES[t].excl; changed(); toast("This job is now " + TRADES[t].name + "."); } };
   $("#pane-markups").onclick = (e) => {
@@ -2586,7 +2821,7 @@ function bind() {
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
@@ -2625,7 +2860,7 @@ function jumpToItem(id) { const pg = page(); if (!pg) return; const onPage = P()
 
 /* ------------------------- Boot ------------------------- */
 (async function boot() {
-  bind(); renderToolbar();
+  bind(); renderToolbar(); applySimple();
   const co = await IDB.get("kv", "company"); if (co) CO = { ...DEFAULT_CO, ...co };
   try { PB = (await IDB.get("kv", "pricebook")) || {}; } catch (e) { PB = {}; }
   Cloud.init().then(async () => { const s = await Cloud.getSettings(); if (s?.company) { CO = { ...DEFAULT_CO, ...s.company }; IDB.put("kv", "company", CO); } });
