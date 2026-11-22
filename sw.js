@@ -1,5 +1,5 @@
-// Offline cache for 20 Vision Material Take Off. Version 25b9f4046a
-const CACHE = "tv-25b9f4046a";
+// Offline cache for 20 Vision Material Take Off. Version bec5313882
+const CACHE = "tv-bec5313882";
 const FILES = ["./", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "index.html", "manifest.webmanifest", "platform-desktop.js", "platform-post.js", "platform-pre.js", "vendor/jszip.min.js", "vendor/pdf-lib.min.js", "vendor/pdf.min.mjs", "vendor/pdf.worker.min.mjs"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
