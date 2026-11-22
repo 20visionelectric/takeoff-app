@@ -380,7 +380,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.15.0";
+const V = "4.16.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -1184,13 +1184,14 @@ function updHint() {
     callout: `<b>Drag</b> from the spot you mean to where the note should sit, then type the note.`,
     aibox: `<b>Drag a box</b> around the part of the drawing you want to ask about.`,
     aisched: `<b>Drag a box</b> around the fixture, panel or equipment schedule.`,
+    aipanel: `<b>Drag a box</b> around the whole panel schedule table.`,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
     photo: `Click a spot on the sheet, then take or choose a photo. With the Select tool, click a camera pin to see the photo.`,
     exclude: `Drag a box over the title block, notes or legend so counting ignores it. Click a grey zone to remove it.`,
   };
-  h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
+  h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.fillMatch ? "<b>Click inside one coloured fill</b>: every area with the same colour on this sheet is added." : S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
@@ -1203,7 +1204,7 @@ function renderSubbar() {
   } else if (S.tool === "scale") {
     const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><button class="btn sm" id="scalePick">Use on chosen sheets…</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
-    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>${S.areaItem ? `<label class="row" style="gap:4px;font-size:13px" title="Subtract this shape: openings, cut-outs, areas not in scope"><input type="checkbox" id="areaDed" ${S.areaDeduct ? "checked" : ""}> Deduct</label>` : ""}<label class="row" style="gap:4px;font-size:13px" title="Click once inside a room; the walls around it become the area"><input type="checkbox" id="roomSel" ${S.roomFill ? "checked" : ""}> One click per room</label>${S.roomFill ? `<label class="row" style="gap:4px;font-size:12px" title="Closes door openings and small gaps in the walls, in drawing points">Close gaps <input class="inp num" id="roomGap" type="number" min="1" max="40" value="${S.roomGap ?? 4}" style="width:54px"></label>` : `<label class="row" style="gap:4px;font-size:13px" title="Click the centre, then the edge"><input type="checkbox" id="circSel" ${S.areaCircle ? "checked" : ""}> Circle</label>`}`; }
+    if (S.tool === "area") { const ars = P()?.items.filter(i => i.kind === "area") || []; if (S.areaItem && !itemOf(S.areaItem)) S.areaItem = null; h += `<span class="eyebrow">Measuring</span><select class="inp" id="areaSel" style="width:auto"><option value="">Markup only (not priced)</option>${ars.map(a => `<option value="${a.id}" ${a.id === S.areaItem ? "selected" : ""}>${esc(a.name)}</option>`).join("")}<option value="__newA">+ New area item…</option></select>${S.areaItem ? `<label class="row" style="gap:4px;font-size:13px" title="Subtract this shape: openings, cut-outs, areas not in scope"><input type="checkbox" id="areaDed" ${S.areaDeduct ? "checked" : ""}> Deduct</label>` : ""}<label class="row" style="gap:4px;font-size:13px" title="Click once inside a room; the walls around it become the area"><input type="checkbox" id="roomSel" ${S.roomFill ? "checked" : ""}> One click per room</label><label class="row" style="gap:4px;font-size:13px" title="Click one coloured fill; every area with the same colour is added"><input type="checkbox" id="fillSel" ${S.fillMatch ? "checked" : ""}> Same fill colour</label>${S.roomFill ? `<label class="row" style="gap:4px;font-size:12px" title="Closes door openings and small gaps in the walls, in drawing points">Close gaps <input class="inp num" id="roomGap" type="number" min="1" max="40" value="${S.roomGap ?? 4}" style="width:54px"></label>` : `<label class="row" style="gap:4px;font-size:13px" title="Click the centre, then the edge"><input type="checkbox" id="circSel" ${S.areaCircle ? "checked" : ""}> Circle</label>`}`; }
     h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
     if (S.tool === "stamp") h += `<select class="inp" id="stampSel" style="width:auto">${["REVISED", "APPROVED", "AS BUILT", "FOR REVIEW", "NOT IN CONTRACT", "FIELD VERIFY"].map(s => `<option ${S.markStyle.stamp === s ? "selected" : ""}>${s}</option>`).join("")}</select>`;
   }
@@ -1218,7 +1219,7 @@ function onDown(e) {
   const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, [x, y] = toPt(sx, sy);
   ptr = { sx, sy, x, y, moved: false, panning: e.button === 1 || S.tool === "pan" || e.button === 2 || (S.tool === "select" && !hitAnything(x, y)) || spaceDown, px: S.panX, py: S.panY };
   if (ptr.panning) { cv().style.cursor = "grabbing"; return; }
-  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow", "callout", "aibox", "aisched"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
+  if (["count", "legend", "exclude", "cloud", "rect", "highlight", "arrow", "callout", "aibox", "aisched", "aipanel"].includes(S.tool)) S.draft = { kind: S.tool, box: [x, y, x, y] };
   if (S.tool === "select") { const h = hitAnything(x, y); S.sel = h; if (h?.type === "markup") ptr.moveMk = { id: h.id, x, y, orig: JSON.stringify(itemMk(h.id)) }; renderSide(); draw(); }
 }
 const itemMk = (id) => P().markups.find(m => m.id === id);
@@ -1244,7 +1245,7 @@ function onUp(e) {
     if (kind === "count") { if (small) return clickCount(x, y); return startTemplate(bx, by, bw, bh); }
     if (small) { if (kind === "exclude") { const i = (pg.excl || []).findIndex(e => x >= e[0] && x <= e[0] + e[2] && y >= e[1] && y <= e[1] + e[3]); if (i >= 0) { commit(); pg.excl.splice(i, 1); changed(); } } draw(); return; }
     if (kind === "legend") return startLegend(bx, by, bw, bh);
-    if (kind === "aibox" || kind === "aisched") { setTool("select"); return kind === "aibox" ? askAboutBox(pg, bx, by, bw, bh) : checkSchedule(pg, bx, by, bw, bh); }
+    if (kind === "aibox" || kind === "aisched" || kind === "aipanel") { setTool("select"); return kind === "aibox" ? askAboutBox(pg, bx, by, bw, bh) : kind === "aipanel" ? readPanel(pg, bx, by, bw, bh) : checkSchedule(pg, bx, by, bw, bh); }
     if (kind === "exclude") { commit(); (pg.excl ||= []).push([bx, by, bw, bh]); changed(); return; }
     if (kind === "callout") { S.draft = { kind: "callout", box: [x1, y1, x, y] }; draw(); return placeCallout([x1, y1, x, y], sx, sy); }
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
@@ -1252,6 +1253,7 @@ function onUp(e) {
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "photo") return addPhoto(pg, x, y);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
+  if (S.tool === "area" && S.fillMatch && !S.draft) return fillMatch(x, y);
   if (S.tool === "area" && S.roomFill && !S.draft) return roomFill(x, y);
   if (["measure", "area", "scale", "circuit", "zone"].includes(S.tool)) {
     if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
@@ -1696,7 +1698,7 @@ function renderTakeoff() {
   const len = items.filter(i => i.kind === "length").reduce((a, i) => a + qtyOf(i, sc), 0);
   const maybeN = items.reduce((a, i) => a + liveMaybes(i).length, 0);
   let h = `<div class="row"><select class="inp" id="jobTrade" style="width:auto" title="Trade for this job">${TRADE_IDS.map(id => `<option value="${id}" ${id === p.trade ? "selected" : ""}>${TRADES[id].icon} ${TRADES[id].name}</option>`).join("")}</select><button class="btn sm" id="addPreset" type="button">+ Add item</button></div>${items.length > 6 ? `<input class="inp" id="itemSearch" placeholder="Search items…" value="${esc(S.itemQ || "")}" autocomplete="off">` : ""}<div class="row"><select class="inp" id="scopeSel" style="flex:1"><option value="all">All sheets</option><option value="page">This sheet only</option>${sets.map(s => `<option value="set:${esc(s)}">${esc(s)}</option>`).join("")}</select></div>
-   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div>${items.length ? `<div class="row" style="gap:6px">${S.bulk ? "" : `<button class="btn sm" id="bulkOn" type="button" title="Tick several items to edit, move or swap them together">Select items</button>`}<button class="btn sm" id="btnGaps" type="button" title="Look for items with no price, labour or materials, and sheets not worked on">Check for gaps</button><button class="btn sm adv" id="btnOrder" type="button" title="Put items in the order you build">Item order</button>${S.ai ? `<button class="btn sm" id="btnQQ" type="button" title="Say or type the job and get line items from your price book">Quick quote</button>` : ""}</div>` : ""}${bulkBar()}`;
+   <div class="sumbar"><div class="sum"><div class="k">Items</div><div class="v">${items.length}</div></div><div class="sum"><div class="k">Counted</div><div class="v">${fmt(cnt)}</div></div><div class="sum"><div class="k">Runs</div><div class="v">${fmt(len)}<small style="font-size:12px"> ${P().units}</small></div></div></div><div class="row" style="gap:6px">${items.length && !S.bulk ? `<button class="btn sm" id="bulkOn" type="button" title="Tick several items to edit, move or swap them together">Select items</button>` : ""}${items.length ? `<button class="btn sm" id="btnGaps" type="button" title="Look for items with no price, labour or materials, and sheets not worked on">Check for gaps</button><button class="btn sm adv" id="btnOrder" type="button" title="Put items in the order you build">Item order</button>` : ""}${S.ai ? `<button class="btn sm" id="btnQQ" type="button" title="Say or type the job and get line items from your price book">Quick quote</button>` : ""}${["drywall", "finishes"].includes(p.trade) ? `<button class="btn sm" id="btnWT" type="button" title="Find wall-type tags (W1, W2A…) and make one run item per type">Wall types</button>` : ""}</div>${bulkBar()}`;
   if (maybeN) h += `<div class="warnbox" style="flex-wrap:wrap"><span><b>${maybeN}</b> possible matches need a look (yellow dashed circles).</span><span class="spacer"></span>${items.filter(i => i.maybes?.length).slice(0, 3).map(i => `<button class="btn sm" data-review="${i.id}">Review ${esc(i.name)} (${i.maybes.length})</button>`).join("")}<button class="btn sm" data-mball="yes">Count all</button><button class="btn sm" data-mball="no">Ignore all</button></div>`;
   if (!items.length) h += `<div class="muted" style="line-height:1.55">No items yet. Use <b>Legend</b> to box the drawing legend and count every symbol at once, or <b>Count</b> to box one symbol. Use <b>Run</b> for pipe, duct, wire or walls, and <b>Area</b> for floors, ceilings and slabs. <b>+ Add item</b> has ready-made items for your trade.${S.ai ? ` No drawings? Use <button class="linkbtn" id="btnQQ" type="button">Quick quote</button> to describe the job in words.` : ""}</div>`;
   for (const cat of (p.keepOrder ? ["Build order"] : catsAll(items))) {
@@ -1925,7 +1927,7 @@ function renderAIPane() {
   if (!S.ai) { el.innerHTML = `<div class="pane"><p class="muted" style="line-height:1.55;margin:0">Ask AI works when this app is opened in Claude. It answers questions about your drawings and takeoff, names symbols, reads legends and checks possible matches.</p></div>`; return; }
   el.innerHTML = `<div class="pane" id="chatScroll"><div class="chat" id="chat"></div>
     <div id="chatStart"><p class="muted" style="margin:0 0 8px;line-height:1.5">Ask about this job, the drawing on screen, materials or installation. ${S.web ? "It can search the live web and read pages, and lists the links it used." : "Answers use your takeoff and what's on screen. Live web search works when this app is open in the Claude desktop app."}</p>
-    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="__spec">Read a spec book for submittals</button>${S.aiImages ? '<button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
+    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="__spec">Read a spec book for submittals</button>${S.aiImages ? '<button data-sug="__panel">Read a panel schedule</button><button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
     <div class="ask"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><textarea class="inp" id="askBox" rows="2" placeholder="Ask anything about this job…"></textarea><div class="row" style="gap:12px">${S.web ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askWeb" checked> Search the live web</label>' : ""}${S.aiImages ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askView"> Include what I\'m looking at</label>' : ""}</div></div><button class="btn primary" id="askGo">Ask</button></div>`;
   for (const m of S.chat) addMsg(m.role, m.content, false);
 }
@@ -1999,7 +2001,7 @@ async function queueThumbs() {
   if (thumbBusy) return; thumbBusy = true;
   try {
     for (const g of P()?.pages || []) {
-      if (thumbs[g.id]) continue; const doc = docOf(g);
+      if (thumbs[g.id] || !thumbWanted(g.id)) continue; const doc = docOf(g);
       try {
         let c;
         if (S.cache.get(g.id)) c = scaleCanvas(S.cache.get(g.id).canvas, 160);
@@ -2084,9 +2086,9 @@ function editRun(id) {
   const r = P().runs.find(x => x.id === id); if (!r) return; const runs = P().items.filter(i => i.kind === "length");
   openDialog(`<div class="dlg-h"><h3>Run details</h3></div><div class="dlg-b"><label class="field"><span>Run type</span><select class="inp" id="rItem">${runs.map(i => `<option value="${i.id}" ${i.id === r.item ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</select></label>
    <div class="grid2"><label class="field"><span>Drops / risers</span><input class="inp" id="rDrops" type="number" min="0" value="${r.drops || 0}"></label><label class="field"><span>Length per drop (${P().units})</span><input class="inp" id="rDL" type="number" min="0" step="0.5" value="${r.dropLen ?? 10}"></label></div>
-   <p class="muted" style="margin:0">Traced: <b class="num">${lenTxt(realLen(r.pts, P().pages.find(g => g.id === r.page)))}</b> · ${bends(r.pts)} bends found · total with waste and drops <b class="num">${lenTxt(runLen(r, P().pages.find(g => g.id === r.page)))}</b></p>${splitRunHtml(r)}</div>
+   <p class="muted" style="margin:0">Traced: <b class="num">${lenTxt(realLen(r.pts, P().pages.find(g => g.id === r.page)))}</b> · ${bends(r.pts)} bends found · total with waste and drops <b class="num">${lenTxt(runLen(r, P().pages.find(g => g.id === r.page)))}</b></p>${panelCktOptions(r)}${splitRunHtml(r)}</div>
    <div class="dlg-f"><button class="btn danger" id="rDel">Delete run</button><span class="spacer"></span><button class="btn" data-close>Cancel</button><button class="btn primary" id="rOk">Save</button></div>`);
-  $("#rOk").onclick = () => { commit(); r.item = $("#rItem").value; r.drops = +$("#rDrops").value || 0; r.dropLen = +$("#rDL").value || 0; closeDialog(); changed(); };
+  $("#rOk").onclick = () => { commit(); if ($("#rPanel")) { r.panel = $("#rPanel").value || undefined; const c = linkedCkt(r); if (c && !r.circuit) r.circuit = c.ckt; } r.item = $("#rItem").value; r.drops = +$("#rDrops").value || 0; r.dropLen = +$("#rDL").value || 0; closeDialog(); changed(); };
   $("#rDel").onclick = () => { commit(); P().runs = P().runs.filter(x => x !== r); closeDialog(); changed(); };
   if ($("#spGo")) $("#spGo").onclick = () => splitRun(r, +$("#spAt").value, $("#spTo").value);
 }
@@ -2388,6 +2390,7 @@ async function exportXlsx() {
   if (labF(p.quote)) bs.push(["Labour difficulty and job conditions", labF(p.quote) + "%"]); if (+p.quote.area) { bs.push(["Building area", p.quote.area + " sq ft"]); add("Sell price per sq ft", t.sub / p.quote.area); }
   sheets.push({ name: "Bid Summary", cols: [40, 16], rows: bs });
   if (zoneNames().length) { const zr = []; for (const it of p.items) for (const [k, q] of Object.entries(qtyByZone(it))) if (q) zr.push([k, it.name, it.kind === "count" || it.kind === "fit" ? q : Math.ceil(q), unitOf(it)]); zr.sort((a, b) => String(a[0]).localeCompare(String(b[0]), "en", { numeric: true })); sheets.push({ name: "By Zone", cols: [22, 34, 9, 7], rows: [H(["Zone", "Item", "Qty", "Unit"]), ...zr] }); }
+  if ((p.panels || []).length) sheets.push({ name: "Panels", cols: [16, 10, 40, 10, 8, 14], rows: [H(["Panel", "Circuit", "Load", "Breaker A", "Poles", "Wire"]), ...p.panels.flatMap(pn => pn.circuits.map(c => [pn.name, c.ckt, c.desc, c.breaker ?? "", c.poles ?? "", c.wire]))] });
   if (p.pages.some(g => g.note)) sheets.push({ name: "Sheet Notes", cols: [22, 80], rows: [H(["Sheet", "Note"]), ...p.pages.filter(g => g.note).map(g => [g.name, g.note])] });
   if ((p.log || []).length) sheets.push({ name: "Change History", cols: [22, 70], rows: [H(["When", "Change"]), ...p.log.map(x => [new Date(x.at).toLocaleString("en-CA"), x.t])] });
   const bk = [H(["Breakdown", "Group", "Material", "Labour hours", "Labour $"])];
@@ -3137,7 +3140,7 @@ const AWG_A = { 14: 15, 12: 20, 10: 30, 8: 40, 6: 55, 4: 70, 3: 85, 2: 95 };
 function vdropOf(r) {
   const it = itemOf(r.item); if (!it) return null; const m = String(it.name).match(/#\s?(14|12|10|8|6|4|3|2)\b|\b(14|12|10)\/[23]\b|\b(14|12|10|8|6)\s?awg/i); if (!m) return null;
   const awg = +(m[1] || m[2] || m[3]); const pg = P().pages.find(g => g.id === r.page), L = runLen(r, pg); if (L == null) return null;
-  const ft = L / M_PER_FT, amps = AWG_A[awg] * 0.8, v = 120, vd = 2 * ft * amps * AWG_R[awg] / 1000; return { awg, ft, amps, pct: vd / v * 100 };
+  const ft = L / M_PER_FT, lk = linkedCkt(r), amps = (lk?.breaker || AWG_A[awg]) * 0.8, v = 120, vd = 2 * ft * amps * AWG_R[awg] / 1000; return { awg, ft, amps, pct: vd / v * 100 };
 }
 
 /* Plan vs schedule: box a fixture or equipment schedule; the AI reads tags and quantities, and the app checks the plans. */
@@ -3306,6 +3309,64 @@ function scanReceipt() {
   inp.click();
 }
 
+/* ------------------------- Nov 22 batch 6 ------------------------- */
+/* Big drawing sets: thumbnails are made only for sheets scrolled into view. */
+function thumbWanted(id) { const im = $(`[data-th="${id}"]`), rail = $("#sheetList"); if (!im || !rail) return false; const a = im.getBoundingClientRect(), b = rail.getBoundingClientRect(); return a.bottom > b.top - 500 && a.top < b.bottom + 500; }
+
+/* Wall types from wall tags (drywall and others): finds tags like W1, W2A, WT-3 on the drawings and makes one run item per type. */
+async function wallTypes() {
+  if (!P()?.pages.length) return toast("Add drawings first.");
+  busy(true, "Looking for wall tags", ""); const re = /^(W|WT|WALL|P|PT)[-\s]?\d{1,2}[A-Z]?$/i, found = {};
+  for (const g of P().pages) for (const t of await pageText(g)) { const s = t.s.trim().toUpperCase(); if (re.test(s)) { const k = s.replace(/\s/g, ""); (found[k] ||= { n: 0, sheets: new Set() }).n++; found[k].sheets.add(g.name); } }
+  busy(false); const tags = Object.keys(found).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  if (!tags.length) return toast("No wall-type tags (W1, W2A, WT-3…) found as text. Scanned drawings have no text to read.");
+  openDialog(`<div class="dlg-h"><h3>Wall types on these drawings</h3><span class="chip">${tags.length}</span></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Each type becomes its own run item, so its length, board, studs and labour total separately. Then trace each wall with Run using that type.</p>
+   <div style="max-height:46vh;overflow:auto"><table class="t"><tr><th></th><th style="text-align:left">Tag</th><th class="r">Tags found</th><th style="text-align:left">Sheets</th></tr>${tags.map(k => `<tr><td><input type="checkbox" data-wt="${esc(k)}" ${P().items.some(i => i.wallTag === k) ? "disabled" : "checked"}></td><td><b>${esc(k)}</b>${P().items.some(i => i.wallTag === k) ? ' <span class="muted" style="font-size:11px">already an item</span>' : ""}</td><td class="r num">${found[k].n}</td><td class="muted" style="font-size:12px">${esc([...found[k].sheets].slice(0, 4).join(", "))}</td></tr>`).join("")}</table></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="wtOk">Make run items</button></div>`);
+  $("#wtOk").onclick = () => { const pick = $$("[data-wt]").filter(c => c.checked && !c.disabled).map(c => c.dataset.wt); if (!pick.length) return closeDialog(); commit();
+    for (const k of pick) { const it = newItem({ name: "Wall type " + k, kind: "length", cat: CATS.find(c => /wall|partition|board/i.test(c)) || CATS[0] }); it.wallTag = k; it.waste = 5; P().items.push(it); }
+    closeDialog(); S.measureItem = P().items.find(i => i.wallTag === pick[0])?.id; setTool("measure"); changed(); toast(`${pick.length} wall-type items made. Pick one under Run type and trace those walls.`); };
+}
+
+/* Split areas by fill colour: click one coloured room or zone; every area with the same fill becomes an area of the chosen item. */
+async function fillMatch(x, y) {
+  const pg = page(); busy(true, "Finding matching fills", "");
+  try {
+    const r = await renderPage(pg), k = Math.min(1, 1400 / Math.max(r.canvas.width, r.canvas.height)), W = Math.round(r.canvas.width * k), H = Math.round(r.canvas.height * k);
+    const c = document.createElement("canvas"); c.width = W; c.height = H; const cx = c.getContext("2d", { willReadFrequently: true }); cx.drawImage(r.canvas, 0, 0, W, H); const d = cx.getImageData(0, 0, W, H).data;
+    const sx = Math.round(x * r.ppt * k), sy = Math.round(y * r.ppt * k), si = (sy * W + sx) * 4; const ref = [d[si], d[si + 1], d[si + 2]];
+    const sat = Math.max(...ref) - Math.min(...ref); if (sat < 18 && ref[0] > 200) { busy(false); return toast("That spot is white or plain. Click inside a coloured fill."); }
+    const tol = 34, m = new Uint8Array(W * H); for (let i = 0, j = 0; i < m.length; i++, j += 4) if (Math.abs(d[j] - ref[0]) + Math.abs(d[j + 1] - ref[1]) + Math.abs(d[j + 2] - ref[2]) < tol) m[i] = 1;
+    // close thin gaps (text, lines) inside fills
+    const cl = new Uint8Array(m); for (let yy = 2; yy < H - 2; yy++) for (let xx = 2; xx < W - 2; xx++) { if (m[yy * W + xx]) continue; let n = 0; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) n += m[(yy + dy) * W + xx + dx]; if (n >= 13) cl[yy * W + xx] = 1; }
+    const lab = new Int32Array(W * H), polys = []; let id = 0; const minPx = Math.max(60, W * H * 0.0004);
+    for (let s = 0; s < cl.length && polys.length < 60; s++) { if (!cl[s] || lab[s]) continue; id++; const st = [s], px = []; lab[s] = id; while (st.length) { const i = st.pop(); px.push(i); const xx = i % W; for (const j of [xx > 0 ? i - 1 : -1, xx < W - 1 ? i + 1 : -1, i - W, i + W]) if (j >= 0 && j < W * H && cl[j] && !lab[j]) { lab[j] = id; st.push(j); } }
+      if (px.length < minPx) continue; const one = new Uint8Array(W * H); for (const i of px) one[i] = 1; const poly = traceOutline(one, W, H).map(([a, b]) => [a / k / r.ppt, b / k / r.ppt]); if (poly.length >= 3) polys.push(poly); }
+    busy(false); if (!polys.length) return toast("No matching fills found.");
+    const ai = itemOf(S.areaItem); commit(); for (const poly of polys) P().markups.push({ id: uid(), page: pg.id, type: "area", pts: poly, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, at: Date.now() }); changed();
+    toast(`${polys.length} area${polys.length > 1 ? "s" : ""} with that fill added${ai ? " to " + ai.name : ""}. Check the outlines; Ctrl+Z undoes.`);
+  } catch (e) { busy(false); toast("Couldn't read the fills on this sheet."); }
+}
+
+/* Panel schedules: AI reads a boxed panel schedule; circuits can be linked to drawn circuit runs. */
+async function readPanel(pg, bx, by, bw, bh) {
+  if (!S.ai || !S.aiImages) return toast("Reading a panel schedule uses the optional AI with pictures. Turn it on in AI settings.");
+  busy(true, "Reading the panel schedule", ""); let j;
+  try { const r = await renderPage(pg); const c = cropCanvas(r.canvas, bx * r.ppt, by * r.ppt, bw * r.ppt, bh * r.ppt); j = await S.ai.json(`This image is an electrical panel schedule cropped from a drawing (Canada). Reply with only JSON: {"panel": panel name, "volts": string, "main": string, "circuits": [{"ckt": string circuit number(s), "desc": string load description, "breaker": number amps|null, "poles": number|null, "wire": string|null}]}. Include every row that has a load or a breaker; skip blank spaces.`, { images: [await toBlob(scaleCanvas(c, 2000))], modelTier: "default" }); }
+  catch (e) { busy(false); return toast(aiErr(e)); } busy(false);
+  const ckts = (j?.circuits || []).filter(c => c && (c.desc || c.breaker)); if (!ckts.length) return toast("No circuits read from that box. Box the whole schedule table.");
+  const name = String(j.panel || "Panel " + ((P().panels || []).length + 1));
+  openDialog(`<div class="dlg-h"><h3>Panel ${esc(name)}</h3><span class="chip">${ckts.length} circuits</span></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">Read by AI: check it against the drawing. ${esc([j.volts, j.main].filter(Boolean).join(" · "))}</p>
+   <div style="max-height:46vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Ckt</th><th style="text-align:left">Load</th><th class="r">Breaker</th><th style="text-align:left">Wire</th></tr>${ckts.map(c => `<tr><td>${esc(c.ckt || "")}</td><td>${esc(c.desc || "")}</td><td class="r num">${c.breaker ? c.breaker + " A" + (c.poles > 1 ? " " + c.poles + "P" : "") : ""}</td><td>${esc(c.wire || "")}</td></tr>`).join("")}</table></div></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="pnOk">Save panel to this job</button></div>`);
+  $("#pnOk").onclick = () => { (P().panels ||= []).push({ id: uid(), name, volts: j.volts || "", main: j.main || "", page: pg.id, circuits: ckts.map(c => ({ ckt: String(c.ckt || ""), desc: String(c.desc || ""), breaker: +c.breaker || null, poles: +c.poles || null, wire: c.wire || "" })) }); closeDialog(); markDirty(); toast(`Panel ${name} saved. Link circuit runs to it in Run details; it also goes in the Excel export.`); };
+}
+function panelCktOptions(r) {
+  const ps = P().panels || []; if (!ps.length) return "";
+  return `<label class="field"><span>Panel circuit</span><select class="inp" id="rPanel"><option value="">Not linked</option>${ps.map(p => p.circuits.map((c, i) => `<option value="${p.id}:${i}" ${r.panel === p.id + ":" + i ? "selected" : ""}>${esc(p.name)} · ${esc(c.ckt)} ${esc(c.desc).slice(0, 30)}${c.breaker ? " · " + c.breaker + " A" : ""}</option>`).join("")).join("")}</select></label>`;
+}
+function linkedCkt(r) { if (!r.panel) return null; const [pid, i] = r.panel.split(":"); return (P().panels || []).find(p => p.id === pid)?.circuits[+i] || null; }
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
@@ -3336,7 +3397,8 @@ function bind() {
     if (e.target.id === "stampSel") S.markStyle.stamp = e.target.value;
     if (e.target.id === "dropSel") S.dropLen = +e.target.value || 0;
     if (e.target.id === "areaDed") S.areaDeduct = e.target.checked;
-    if (e.target.id === "roomSel") { S.roomFill = e.target.checked; S.draft = null; renderSubbar(); updHint(); }
+    if (e.target.id === "roomSel") { S.roomFill = e.target.checked; if (S.roomFill) S.fillMatch = false; S.draft = null; renderSubbar(); updHint(); }
+    if (e.target.id === "fillSel") { S.fillMatch = e.target.checked; if (S.fillMatch) S.roomFill = false; S.draft = null; renderSubbar(); updHint(); }
     if (e.target.id === "roomGap") S.roomGap = clamp(+e.target.value || 4, 1, 40);
     if (e.target.id === "circSel") { S.areaCircle = e.target.checked; S.draft = null; updHint(); }
     if (e.target.id === "arcSel") { S.runArc = e.target.checked; S.draft = null; updHint(); }
@@ -3360,6 +3422,7 @@ function bind() {
     const dd = e.target.closest("[data-deldoc]"); if (dd) { const d = P().docs.find(x => x.id === dd.dataset.deldoc); openDialog(`<div class="dlg-h"><h3>Remove ${esc(d.name)}?</h3></div><div class="dlg-b"><p style="margin:0">Its sheets and every count, run and markup on them are removed from this job. Undo brings them back.</p></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn danger" id="ddOk">Remove</button></div>`); $("#ddOk").onclick = () => { commit(); const ids = new Set(P().pages.filter(g => g.docId === d.id).map(g => g.id)); P().pages = P().pages.filter(g => !ids.has(g.id)); P().docs = P().docs.filter(x => x !== d); P().marks = P().marks.filter(m => !ids.has(m.page)); P().runs = P().runs.filter(m => !ids.has(m.page)); P().markups = P().markups.filter(m => !ids.has(m.page)); closeDialog(); changed({ sheets: true }); openPage(0); }; return; }
     const b = e.target.closest("[data-page]"); if (b) { openPage(+b.dataset.page); $("#rail").classList.remove("open"); }
   };
+  $("#sheetList").addEventListener("scroll", () => { clearTimeout(S.thT); S.thT = setTimeout(queueThumbs, 150); }, { passive: true });
   $("#sheetList").onchange = (e) => { if (e.target.id === "shFilter") { S.sheetFilter = e.target.value; renderSheets(); } };
   $("#sheetList").ondblclick = (e) => { if (e.target.closest("[data-shst],#shFilter")) return; const b = e.target.closest("[data-page]"); if (!b) return; const g = P().pages[+b.dataset.page]; openDialog(`<div class="dlg-h"><h3>Sheet name and note</h3></div><div class="dlg-b"><input class="inp" id="shNm" value="${esc(g.name)}"><label class="field"><span>Note for this sheet (goes in the Excel and handoff exports)</span><textarea class="inp" id="shNote" rows="3">${esc(g.note || "")}</textarea></label></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="shOk">Save</button></div>`); $("#shOk").onclick = () => { commit(); g.note = $("#shNote").value.trim() || undefined; g.name = $("#shNm").value.trim() || g.name; closeDialog(); changed({ sheets: true }); }; };
   $$(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
@@ -3375,6 +3438,7 @@ function bind() {
     if (e.target.id === "btnGaps") return showBidGaps();
     if (e.target.id === "btnOrder") return sortItems();
     if (e.target.id === "btnQQ") return quickQuote();
+    if (e.target.id === "btnWT") return wallTypes();
     if (t("bk")) { const a = t("bk").dataset.bk; if (a === "all") P().items.filter(i => !S.itemQ || i.name.toLowerCase().includes(S.itemQ.toLowerCase())).forEach(i => S.bsel.add(i.id)); if (a === "none") S.bsel.clear(); if (a === "done") { S.bulk = false; S.bsel.clear(); } if (a === "edit") return bulkEdit(); if (a === "move") return moveTakeoff([...S.bsel]); return renderTakeoff(); }
     if (S.bulk && t("item")) { const id = t("item").dataset.item; S.bsel.has(id) ? S.bsel.delete(id) : S.bsel.add(id); return renderTakeoff(); }
     const row = t("item"); if (row) { const id = row.dataset.item; S.activeItem = S.activeItem === id ? null : id; const it = itemOf(id); if (S.activeItem) { if (it.kind === "length") { S.measureItem = id; if (S.tool !== "measure" && S.tool !== "circuit") setTool("measure"); else renderSubbar(); } else if (it.kind === "area") { S.areaItem = id; if (S.tool !== "area") setTool("area"); else renderSubbar(); } else if (S.tool !== "count") setTool("count"); } renderTakeoff(); updHint(); draw(); jumpToItem(id); }
@@ -3401,7 +3465,7 @@ function bind() {
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
   $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "bsAsk") return askReport($("#bsQ").value.trim()); if (e.target.id === "bsClear") { S.breakQ = ""; return renderQuote(); } if (e.target.id === "costScan") return scanReceipt(); if (e.target.id === "costAdd") return costDialog(); const cdx = e.target.closest("[data-costdel]"); if (cdx) { P().costs.splice(+cdx.dataset.costdel, 1); markDirty(); return renderQuote(); } if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
-  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && (s.dataset.sug === "__box" || s.dataset.sug === "__sched")) { setTool(s.dataset.sug === "__box" ? "aibox" : "aisched"); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
+  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && ["__box", "__sched", "__panel"].includes(s.dataset.sug)) { setTool({ __box: "aibox", __sched: "aisched", __panel: "aipanel" }[s.dataset.sug]); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-quote").addEventListener("keydown", (e) => { if (e.target.id === "bsQ" && e.key === "Enter") askReport(e.target.value.trim()); });
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
