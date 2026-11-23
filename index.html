@@ -85,7 +85,23 @@ h1,h2,h3{font-family:var(--f-display);font-weight:700;letter-spacing:.01em;margi
 .step .n{font-family:var(--f-mono);color:var(--blue);font-size:12px}
 
 /* ---------- App shell ---------- */
-#app{height:100%;display:grid;grid-template-rows:auto 1fr}
+#app{height:100%;display:grid;grid-template-rows:auto auto 1fr}
+.menubar{display:flex;align-items:center;gap:2px;padding:2px max(8px,env(safe-area-inset-left,0px));background:#13203A;color:#E7ECF5;font-size:13px;min-width:0;overflow:hidden}
+.menubar .mb-top{background:none;border:0;color:inherit;padding:5px 10px;border-radius:5px;cursor:default;font:inherit}
+.menubar .mb-top:hover,.menubar .mb-top.on{background:#1554D1;color:#fff}
+.menubar .mb-find{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);color:#C9D3E6;border-radius:6px;padding:3px 8px;font:inherit;font-size:12.5px;cursor:pointer}
+.menubar .mb-find kbd{background:rgba(255,255,255,.12);color:#E7ECF5;border:0}
+.mb-dd{position:fixed;z-index:60;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:4px;min-width:270px;font-size:13px}
+.mb-it{display:grid;grid-template-columns:18px 1fr auto;gap:8px;align-items:center;width:100%;border:0;background:transparent;text-align:left;padding:6px 10px 6px 6px;border-radius:5px;font:inherit;color:inherit;cursor:default}
+.mb-it:hover{background:var(--blue);color:#fff}.mb-it:hover .kb{color:#fff}
+.mb-it .kb{color:var(--muted);font-family:var(--f-mono);font-size:11.5px}.mb-it .ck{color:var(--blue);font-weight:700}
+.mb-sep{height:1px;background:var(--line);margin:4px 6px}
+.mb-sub{position:relative}.mb-dd2{display:none;position:absolute;left:100%;top:-4px}.mb-sub:hover>.mb-dd2{display:block}
+kbd{font-family:var(--f-mono);font-size:11.5px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+.help-card{display:flex;flex-direction:column;gap:3px;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:10px 12px;margin-bottom:6px;width:100%;cursor:pointer;font:inherit;color:inherit}
+.help-card:hover{border-color:var(--blue)}.help-card img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#000}
+.vid-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.help ol,.help ul{padding-left:20px;margin:6px 0}.help li{margin:4px 0}
 .top{display:flex;align-items:center;gap:10px;overflow:hidden;padding:8px max(12px,env(safe-area-inset-right,0px)) 8px max(12px,env(safe-area-inset-left,0px));background:var(--panel);border-bottom:1px solid var(--line);min-width:0}
 .top .pname{font-family:var(--f-display);font-size:20px;font-weight:600;border:1px solid transparent;background:transparent;border-radius:6px;padding:3px 6px;min-width:60px;width:min(340px,30vw)}
 .top .pname:hover{border-color:var(--line)}
@@ -248,6 +264,8 @@ dialog::backdrop{background:rgba(8,14,26,.45)}
 
 @media (max-width:1100px){.main{grid-template-columns:200px minmax(0,1fr) 320px}}
 @media (max-width:860px){
+  #app{grid-template-rows:auto 1fr}
+  .menubar{display:none}
   .main{grid-template-columns:minmax(0,1fr)}
   .rail,.side{position:fixed;top:56px;bottom:0;z-index:20;width:min(340px,92vw);box-shadow:var(--shadow)}
   .rail{left:0}
@@ -289,12 +307,14 @@ body.simple .adv{display:none!important}
         <button class="btn" id="btnSettings">Company details</button>
         <button class="btn" id="btnTpl">Templates</button>
         <button class="btn" id="btnPB">Price book</button>
+        <button class="btn" id="btnHelpH" type="button">Help</button>
         <button class="btn" id="btnTutorial">Tutorial</button>
         <button class="btn" id="btnSimple" type="button">Simple mode</button>
       </div>
     </div>
     <div class="start-row">
       <button class="start-card" id="btnBlank"><span class="eyebrow">Start fresh</span><b>New blank job</b><span class="muted">Opens an empty sheet. Sketch, mark up and count by hand, and add drawings whenever you're ready.</span></button>
+      <button class="start-card" id="btnScanH"><span class="eyebrow">Paper plans?</span><b>Scan a paper drawing</b><span class="muted">Take a photo of a paper plan or a sketch. It is squared up into a sheet you can scale, count and measure.</span></button>
       <button class="start-card" id="btnTour2"><span class="eyebrow">New here?</span><b>Learn the app in 3 minutes</b><span class="muted">A guided tutorial on a practice drawing. Nothing you do there is saved.</span></button>
     </div>
     <label class="drop" id="homeDrop" for="fileHome">
@@ -317,6 +337,7 @@ body.simple .adv{display:none!important}
 
 <!-- ======================= APP ======================= -->
 <section id="app" hidden>
+  <nav class="menubar" id="menubar" aria-label="Menu"></nav>
   <header class="top">
     <button class="btn ghost sm" id="btnHome" title="All jobs"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg><span class="hide-narrow">Jobs</span></button>
     <button class="btn ghost sm mobile-only" id="btnRail">Sheets</button>
@@ -325,7 +346,7 @@ body.simple .adv{display:none!important}
     <span class="spacer"></span>
     <button class="btn sm" id="btnUndo" title="Undo (Ctrl+Z)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg></button>
     <button class="btn sm" id="btnRedo" title="Redo (Ctrl+Y)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 000 10h3"/></svg></button>
-    <button class="btn sm" id="btnHelp" title="Tutorial">?</button>
+    <button class="btn sm" id="btnHelp" title="Help centre (F1)">?</button>
     <button class="btn primary sm" id="btnExport">Export</button>
     <button class="btn ghost sm mobile-only" id="btnSide">Panel</button>
   </header>
@@ -335,7 +356,7 @@ body.simple .adv{display:none!important}
         <label class="btn sm primary" for="fileAdd">+ Add</label><input type="file" id="fileAdd" accept="application/pdf,image/png,image/jpeg" multiple hidden>
       </div>
       <div class="rail-body" id="sheetList"></div>
-      <div style="padding:8px;border-top:1px solid var(--line);display:grid;gap:6px"><button class="btn sm" id="btnFind" style="width:100%;justify-content:center" title="Search every sheet (Ctrl+F)">Find text on drawings</button><button class="btn sm" id="btnCompare" style="width:100%;justify-content:center">Compare two sheets</button><button class="btn sm" id="btnCopySh" style="width:100%;justify-content:center" title="Copy this sheet's counts and runs to typical floors">Copy to other sheets</button></div>
+      <div style="padding:8px;border-top:1px solid var(--line);display:grid;gap:6px"><button class="btn sm" id="btnFind" style="width:100%;justify-content:center" title="Search every sheet (Ctrl+F)">Find text on drawings</button><button class="btn sm" id="btnCompare" style="width:100%;justify-content:center">Compare two sheets</button><button class="btn sm" id="btnCopySh" style="width:100%;justify-content:center" title="Copy this sheet's counts and runs to typical floors">Copy to other sheets</button><button class="btn sm adv" id="btnJoin" style="width:100%;justify-content:center" title="Line up a floor split across two sheets">Join sheets at a match line</button><button class="btn sm" id="btnScan" style="width:100%;justify-content:center" title="Photo of a paper plan or sketch">Scan a paper drawing</button></div>
     </aside>
     <div class="viewer" id="viewer">
       <canvas id="cv"></canvas>
@@ -380,7 +401,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.16.0";
+const V = "4.17.0";
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -905,6 +926,7 @@ function stopMatching() { stopFlag = true; if (matcher) { matcher.terminate(); m
 const thrOf = (sens) => clamp(0.9 - (sens - 1) * 0.035, 0.55, 0.9);
 
 async function countItem(item, scopePages, { quiet = false } = {}) {
+  if (scopePages.length > 1) scopePages = scopePages.filter(g => !g.joinedInto);
   const tps = item.templates || []; if (!tps.length) return { n: 0, maybe: 0 };
   stopFlag = false; let added = 0, maybes = [];
   busy(true, `Counting ${item.name}`, "Starting…", true);
@@ -999,6 +1021,7 @@ function drawNow() {
   if (hit) { const h2 = S.hi; if (h2 && h2.pg === pg.id) g.drawImage(h2.canvas, h2.rect[0], h2.rect[1], h2.rect[2], h2.rect[3]); wantHi(pg, hit); }
   g.filter = "none";
   const z = S.zoom, px = 1 / z;
+  if (S.join) drawJoinPts(g, pg, px);
   if (S.findHit && S.findHit.pg === pg.id) { const r = S.findHit.r; g.save(); g.fillStyle = "rgba(255,214,0,.35)"; g.fillRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.strokeStyle = "#E9A800"; g.lineWidth = 2.5 * px; g.strokeRect(r[0] - 3 * px, r[1] - 3 * px, r[2] + 6 * px, r[3] + 6 * px); g.restore(); }
   // exclusion zones
   for (const e of pg.excl || []) {
@@ -1166,7 +1189,7 @@ function fitToolbar() { const tb = $("#toolbar"); if (!tb) return; tb.classList.
 function renderToolbar() {
   $("#toolbar").innerHTML = TOOLS.map(t => t === "|" ? '<span class="tsep"></span>' : `<button class="tool ${S.tool === t[0] ? "on" : ""}" data-tool="${t[0]}" title="${t[1]} (${t[2]})">${svgI(t[0] === "measure" ? "measure" : t[0])}<span>${t[1]}</span></button>`).join(""); requestAnimationFrame(fitToolbar);
 }
-function setTool(t) { S.tool = t; S.draft = null; closePop(); renderToolbar(); renderSubbar(); updHint(); draw(); cv().style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; }
+function setTool(t) { if (t !== "joinpick") S.join = null; S.tool = t; S.draft = null; closePop(); renderToolbar(); renderSubbar(); updHint(); draw(); cv().style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; }
 function updHint() {
   const pg = page(); const h = $("#hint"); if (!pg) { h.hidden = true; return; } h.hidden = false;
   const noScale = !pg.scale ? ` <b style="color:var(--bad)">This sheet has no scale yet</b> — use <b>Scale</b>.` : "";
@@ -1186,12 +1209,14 @@ function updHint() {
     aisched: `<b>Drag a box</b> around the fixture, panel or equipment schedule.`,
     aipanel: `<b>Drag a box</b> around the whole panel schedule table.`,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
+    joinpick: joinHint(),
     cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
     photo: `Click a spot on the sheet, then take or choose a photo. With the Select tool, click a camera pin to see the photo.`,
     exclude: `Drag a box over the title block, notes or legend so counting ignores it. Click a grey zone to remove it.`,
   };
-  h.innerHTML = (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.fillMatch ? "<b>Click inside one coloured fill</b>: every area with the same colour on this sheet is added." : S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
+  const jn = pg.joinedInto && P().pages.find(x => x.id === pg.joinedInto);
+  h.innerHTML = (jn ? `<span class="chip amber" style="margin-right:6px" title="Take off on the joined sheet so nothing is counted twice">Joined into ${esc(jn.name)}</span>` : "") + (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.fillMatch ? "<b>Click inside one coloured fill</b>: every area with the same colour on this sheet is added." : S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
@@ -1250,6 +1275,7 @@ function onUp(e) {
     if (kind === "callout") { S.draft = { kind: "callout", box: [x1, y1, x, y] }; draw(); return placeCallout([x1, y1, x, y], sx, sy); }
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
   }
+  if (S.tool === "joinpick") { if (!p.moved) joinClick(x, y); return; }
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "photo") return addPhoto(pg, x, y);
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
@@ -1302,7 +1328,7 @@ async function findText() {
   openDialog(`<div class="dlg-h"><h3>Find text on drawings</h3></div><div class="dlg-b"><input class="inp" id="fq" placeholder="Panel name, tag or note (e.g. LP-2, EF-1, GFCI)" autocomplete="off" value="${esc(S.findQ || "")}"><div id="fres" class="muted" style="max-height:44vh;overflow:auto;display:grid;gap:4px">Type at least 2 letters.</div><div id="fcount"></div><p class="muted" style="margin:0;font-size:12px">Searches the text inside PDF drawings. Scanned drawings and photos have no text to search.</p></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
   let tm = null; const run = async () => { const q = $("#fq").value.trim(); S.findQ = q; const out = $("#fres"); if (!out) return; if (q.length < 2) { out.textContent = "Type at least 2 letters."; textCountUI([], q); return; }
     out.textContent = "Searching…"; const ql = q.toLowerCase(), hits = [];
-    for (let i = 0; i < P().pages.length; i++) { const g = P().pages[i]; for (const t of await pageText(g)) if (t.s.toLowerCase().includes(ql)) hits.push({ i, g, t }); if ($("#fq")?.value.trim() !== q) return; }
+    for (let i = 0; i < P().pages.length; i++) { const g = P().pages[i]; if (g.joinedInto) continue; for (const t of await pageText(g)) if (t.s.toLowerCase().includes(ql)) hits.push({ i, g, t }); if ($("#fq")?.value.trim() !== q) return; }
     out.innerHTML = hits.length ? `<b style="color:var(--ink)">${hits.length} found</b>` + hits.slice(0, 300).map((h, k) => `<button class="btn ghost sm" data-fh="${k}" style="justify-content:flex-start;text-align:left"><b>${esc(h.g.name)}</b>&nbsp;<span class="muted">${esc(h.t.s.trim().slice(0, 70))}</span></button>`).join("") : "Nothing found on these sheets.";
     textCountUI(hits, q);
     $$("[data-fh]").forEach(b => b.onclick = async () => { const h = hits[+b.dataset.fh]; closeDialog(); if (S.pageIdx !== h.i) await openPage(h.i); S.findHit = { pg: h.g.id, r: [h.t.x, h.t.y, h.t.w, h.t.h] }; if (S.zoom < 1.2) S.zoom = 1.6; centerOn(h.t.x + h.t.w / 2, h.t.y + h.t.h / 2); });
@@ -1927,7 +1953,7 @@ function renderAIPane() {
   if (!S.ai) { el.innerHTML = `<div class="pane"><p class="muted" style="line-height:1.55;margin:0">Ask AI works when this app is opened in Claude. It answers questions about your drawings and takeoff, names symbols, reads legends and checks possible matches.</p></div>`; return; }
   el.innerHTML = `<div class="pane" id="chatScroll"><div class="chat" id="chat"></div>
     <div id="chatStart"><p class="muted" style="margin:0 0 8px;line-height:1.5">Ask about this job, the drawing on screen, materials or installation. ${S.web ? "It can search the live web and read pages, and lists the links it used." : "Answers use your takeoff and what's on screen. Live web search works when this app is open in the Claude desktop app."}</p>
-    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="__spec">Read a spec book for submittals</button>${S.aiImages ? '<button data-sug="__panel">Read a panel schedule</button><button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
+    <div class="sugs"><button data-sug="${esc(tr().asks[0])}">Check my takeoff for misses</button><button data-sug="__scan">Scan this sheet and compare with my counts</button><button data-sug="__set">Ask about the whole drawing set</button><button data-sug="__spec">Read a spec book for submittals</button>${S.aiImages ? '<button data-sug="__panel">Read a panel schedule</button><button data-sug="__box">Ask about a boxed area</button><button data-sug="__sched">Check plans against a schedule</button>' : ""}<button data-sug="${esc(tr().asks[1])}">Material help</button><button data-sug="${esc(tr().asks[2])}">Estimate labour days</button>${S.web ? '<button data-sug="Search the web for this week\'s Canadian ' + esc(tr().name.toLowerCase()) + ' industry news that matters to a GTA contractor (material prices, code and safety bulletins, supply shortages). Give me 5 short bullets with links.">Industry news</button><button data-sug="Find the manufacturer spec sheet for a ' + esc(tr().examples[0]) + ' suitable for a Canadian commercial job and summarize the key specs, with the link.">Find a spec sheet</button>' : ""}</div></div></div>
     <div class="ask"><div style="flex:1;display:flex;flex-direction:column;gap:6px"><textarea class="inp" id="askBox" rows="2" placeholder="Ask anything about this job…"></textarea><div class="row" style="gap:12px">${S.web ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askWeb" checked> Search the live web</label>' : ""}${S.aiImages ? '<label class="row muted" style="gap:6px;font-size:12px"><input type="checkbox" id="askView"> Include what I\'m looking at</label>' : ""}</div></div><button class="btn primary" id="askGo">Ask</button></div>`;
   for (const m of S.chat) addMsg(m.role, m.content, false);
 }
@@ -1993,7 +2019,7 @@ function renderSheets() {
   if (!P().docs.length) { el.innerHTML = `<p class="muted" style="margin:6px;line-height:1.5">No drawings yet. Press <b>+ Add</b> or drop PDFs on the canvas.</p>`; return; }
   const noSc = P().pages.filter(g => !g.scale).length;
   el.innerHTML = sheetProgressHtml() + (noSc ? `<div class="warnbox" style="margin:6px;font-size:12.5px;display:block">${noSc} sheet${noSc > 1 ? "s have" : " has"} no scale yet, so lengths and areas there won't add up. Open the sheet, pick Scale, then "Use on chosen sheets".</div>` : "") + P().docs.map(d => `<div class="docgrp"><div class="docgrp-h"><span class="nm" title="${esc(d.name)}">${esc(d.name)}</span><button class="chip blue" data-setlbl="${d.id}" title="Rename this drawing set">${esc(d.set)}</button><button class="btn ghost sm" data-deldoc="${d.id}" title="Remove this drawing file" style="padding:2px">${svgI("trash", 14)}</button></div>` +
-    P().pages.map((g, i) => g.docId !== d.id || !sheetShown(g) ? "" : `<button class="sheet ${i === S.pageIdx ? "on" : ""}" data-page="${i}"><img class="th" alt="" ${thumbs[g.id] ? `src="${thumbs[g.id]}"` : ""} data-th="${g.id}"><span class="meta"><b>${esc(g.name)}</b><span class="row" style="gap:4px">${(() => { const n = P().marks.filter(m => m.page === g.id).length; return n ? `<span class="chip">${n} ticks</span>` : ""; })()}${g.scale ? "" : '<span class="chip amber">no scale</span>'}${sheetStatusChip(g)}</span></span></button>`).join("") + `</div>`).join("");
+    P().pages.map((g, i) => g.docId !== d.id || !sheetShown(g) ? "" : `<button class="sheet ${i === S.pageIdx ? "on" : ""}" data-page="${i}"><img class="th" alt="" ${thumbs[g.id] ? `src="${thumbs[g.id]}"` : ""} data-th="${g.id}"><span class="meta"><b>${esc(g.name)}</b><span class="row" style="gap:4px">${(() => { const n = P().marks.filter(m => m.page === g.id).length; return n ? `<span class="chip">${n} ticks</span>` : ""; })()}${g.scale ? "" : '<span class="chip amber">no scale</span>'}${g.joinedInto ? '<span class="chip amber" title="Part of a joined sheet">joined</span>' : ""}${sheetStatusChip(g)}</span></span></button>`).join("") + `</div>`).join("");
   queueThumbs();
 }
 let thumbBusy = false;
@@ -3367,13 +3393,366 @@ function panelCktOptions(r) {
 }
 function linkedCkt(r) { if (!r.panel) return null; const [pid, i] = r.panel.split(":"); return (P().panels || []).find(p => p.id === pid)?.circuits[+i] || null; }
 
+/* ------------------------- Files from other apps (Open with / Share) ------------------------- */
+async function openIncomingFiles(files) {
+  files = [...(files || [])].filter(f => /pdf|png|jpe?g/i.test(f.type) || /\.(pdf|png|jpe?g)$/i.test(f.name));
+  if (!files.length) return;
+  const names = files.map(f => f.name).slice(0, 4).join(", ") + (files.length > 4 ? ` and ${files.length - 4} more` : "");
+  const inJob = S.proj && !$("#app").hidden && !(S.proj.sample && !S.proj.keep);
+  if (!inJob) { if (S.proj) await showHome(); return addFiles(files); }
+  openDialog(`<div class="dlg-h"><h3>Drawings received</h3></div><div class="dlg-b"><p style="margin:0;line-height:1.5"><b>${esc(names)}</b></p><p class="muted" style="margin:0">Add ${files.length > 1 ? "them" : "it"} to <b>${esc(P().name)}</b>, or start a new job?</p></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><span class="spacer"></span><button class="btn" id="inNew">Start a new job</button><button class="btn primary" id="inAdd">Add to this job</button></div>`);
+  $("#inAdd").onclick = () => { closeDialog(); addFiles(files); };
+  $("#inNew").onclick = async () => { closeDialog(); await showHome(); addFiles(files); };
+}
+window.openIncomingFiles = openIncomingFiles;
+function listenForLaunchFiles() {
+  // installed desktop app: "Open with 20 Vision Material Take Off" on a PDF
+  if ("launchQueue" in window) try { window.launchQueue.setConsumer(async (p) => { if (!p?.files?.length) return; const fs = []; for (const h of p.files) { try { fs.push(await h.getFile()); } catch (e) { } } openIncomingFiles(fs); }); } catch (e) { }
+}
+
+/* ------------------------- Scan a paper drawing ------------------------- */
+function scanDrawing() {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.setAttribute("capture", "environment");
+  inp.onchange = async () => { const f = inp.files?.[0]; if (!f) return; try { await scanDialog(f); } catch (e) { console.warn(e); toast("Couldn't read that photo. Try a JPG or PNG."); } };
+  inp.click();
+}
+async function scanDialog(file) {
+  busy(true, "Reading the photo", file.name);
+  let bmp; try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { bmp = await createImageBitmap(file); }
+  const k = Math.min(1, 4000 / Math.max(bmp.width, bmp.height));
+  let src = document.createElement("canvas"); src.width = Math.round(bmp.width * k); src.height = Math.round(bmp.height * k);
+  src.getContext("2d").drawImage(bmp, 0, 0, src.width, src.height); busy(false);
+  let quad = findPaper(src);
+  const base = file.name.replace(/\.[^.]+$/, "");
+  openDialog(`<div class="dlg-h"><h3>Scan a paper drawing</h3></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px;line-height:1.5">Drag the four blue corners onto the corners of the drawing. The app squares it up and adds it as a sheet you can scale, count and measure.</p>
+   <div id="scWrap" style="position:relative;touch-action:none;background:#222;border-radius:8px;overflow:hidden;display:flex;justify-content:center"><canvas id="scCv" style="max-width:100%;max-height:50vh;display:block;touch-action:none"></canvas></div>
+   <div class="row" style="gap:10px;flex-wrap:wrap"><button class="btn sm" id="scRot" type="button">Rotate 90°</button><button class="btn sm" id="scAll" type="button">Use the whole photo</button><label class="row" style="gap:6px;font-size:13px"><input type="checkbox" id="scClean" checked> Clean up (white paper, dark lines)</label></div>
+   <label class="field"><span>Sheet name</span><input class="inp" id="scName" value="${esc(/^(img|image|photo|pxl|dsc|\d)/i.test(base) ? "Scanned sheet" : base)}"></label></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="scOk">Add as sheet</button></div>`);
+  const cvs = $("#scCv"); let drag = -1, view = null;
+  const paint = () => {
+    const s = Math.min(1, 900 / Math.max(src.width, src.height)); if (!view || view.src !== src) { view = { src, s, c: scaleCanvas(src, 900) }; }
+    cvs.width = view.c.width; cvs.height = view.c.height; const g = cvs.getContext("2d"); g.drawImage(view.c, 0, 0);
+    const q = quad.map(p => [p[0] * view.s, p[1] * view.s]);
+    g.fillStyle = "rgba(21,84,209,.14)"; g.strokeStyle = "#1554D1"; g.lineWidth = 2.5; g.beginPath(); q.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.stroke();
+    const r = Math.max(9, cvs.width / 55); q.forEach(p => { g.fillStyle = "#fff"; g.beginPath(); g.arc(p[0], p[1], r, 0, 7); g.fill(); g.lineWidth = 3; g.stroke(); });
+  };
+  const at = (e) => { const b = cvs.getBoundingClientRect(); return [(e.clientX - b.left) * cvs.width / b.width / view.s, (e.clientY - b.top) * cvs.height / b.height / view.s]; };
+  cvs.onpointerdown = (e) => { const p = at(e); let bd = Infinity; quad.forEach((q, i) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; drag = i; } }); cvs.setPointerCapture(e.pointerId); quad[drag] = p.map((v, j) => clamp(v, 0, j ? src.height : src.width)); paint(); };
+  cvs.onpointermove = (e) => { if (drag < 0) return; const p = at(e); quad[drag] = [clamp(p[0], 0, src.width), clamp(p[1], 0, src.height)]; paint(); };
+  cvs.onpointerup = cvs.onpointercancel = () => { drag = -1; };
+  $("#scAll").onclick = () => { quad = [[0, 0], [src.width, 0], [src.width, src.height], [0, src.height]]; paint(); };
+  $("#scRot").onclick = () => { const r = document.createElement("canvas"); r.width = src.height; r.height = src.width; const g = r.getContext("2d"); g.translate(r.width, 0); g.rotate(Math.PI / 2); g.drawImage(src, 0, 0); quad = quad.map(p => [src.height - p[1], p[0]]); quad = [quad[3], quad[0], quad[1], quad[2]]; src = r; paint(); };
+  $("#scOk").onclick = async () => {
+    const name = $("#scName").value.trim() || "Scanned sheet", clean = $("#scClean").checked; closeDialog(); busy(true, "Squaring up the drawing", "");
+    await sleep(30);
+    try { let out = warpQuad(src, quad); if (clean) out = cleanScan(out); const blob = await toBlob(out, clean ? "image/png" : "image/jpeg", 0.9); busy(false);
+      const before = P()?.docs.length || 0; await addFiles([new File([blob], name + (clean ? ".png" : ".jpg"), { type: blob.type })]);
+      const nd = P()?.docs[P().docs.length - 1]; if (nd && P().docs.length > before && before > 0) { nd.set = "Scanned sheets"; renderSheets(); markDirty(); }
+      setTool("scale"); toast("Sheet added. Set its scale: click both ends of a dimension you know, then type its length.");
+    } catch (e) { busy(false); console.warn(e); toast("Couldn't square up that photo. Try again with the corners inside the photo."); }
+  };
+  paint();
+}
+// Finds the paper in a photo: the largest bright area, then its four extreme corners.
+function findPaper(src) {
+  const c = scaleCanvas(src, 420), w = c.width, h = c.height, g = grayOf(c, 0, 0, w, h);
+  const hist = new Array(256).fill(0); for (const v of g) hist[v]++;
+  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i]; let sB = 0, wB = 0, best = 0, th = 128;
+  for (let t = 0; t < 256; t++) { wB += hist[t]; if (!wB) continue; const wF = g.length - wB; if (!wF) break; sB += t * hist[t]; const mB = sB / wB, mF = (sum - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > best) { best = v; th = t; } }
+  const lab = new Int32Array(w * h).fill(-1); let bestN = 0, bestL = -1; const st = [];
+  for (let i = 0; i < g.length; i++) { if (g[i] <= th || lab[i] >= 0) continue; let n = 0; lab[i] = i; st.push(i);
+    while (st.length) { const j = st.pop(); n++; const x = j % w, y = (j / w) | 0; for (const k of [x > 0 ? j - 1 : -1, x < w - 1 ? j + 1 : -1, y > 0 ? j - w : -1, y < h - 1 ? j + w : -1]) if (k >= 0 && lab[k] < 0 && g[k] > th) { lab[k] = i; st.push(k); } }
+    if (n > bestN) { bestN = n; bestL = i; } }
+  const s = src.width / w, inset = [[0.03, 0.03], [0.97, 0.03], [0.97, 0.97], [0.03, 0.97]].map(p => [p[0] * src.width, p[1] * src.height]);
+  if (bestN < g.length * 0.18 || bestN > g.length * 0.985) return inset;
+  let tl = [0, 0, Infinity], tr = [0, 0, -Infinity], br = [0, 0, -Infinity], bl = [0, 0, Infinity];
+  for (let i = 0; i < g.length; i++) { if (lab[i] !== bestL) continue; const x = i % w, y = (i / w) | 0;
+    if (x + y < tl[2]) tl = [x, y, x + y]; if (x + y > br[2]) br = [x, y, x + y]; if (x - y > tr[2]) tr = [x, y, x - y]; if (x - y < bl[2]) bl = [x, y, x - y]; }
+  return [tl, tr, br, bl].map(p => [p[0] * s, p[1] * s]);
+}
+// 3x3 homography that maps the unit square corners to the four points (tl, tr, br, bl).
+function squareToQuad(q) {
+  const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q;
+  const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2, sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+  let g = 0, h = 0; if (Math.abs(sx) > 1e-9 || Math.abs(sy) > 1e-9) { const den = dx1 * dy2 - dx2 * dy1; g = (sx * dy2 - dx2 * sy) / den; h = (dx1 * sy - sx * dy1) / den; }
+  return [x1 - x0 + g * x1, x3 - x0 + h * x3, x0, y1 - y0 + g * y1, y3 - y0 + h * y3, y0, g, h, 1];
+}
+function warpQuad(src, quad) {
+  const L = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  let W = Math.round((L(quad[0], quad[1]) + L(quad[3], quad[2])) / 2), H = Math.round((L(quad[0], quad[3]) + L(quad[1], quad[2])) / 2);
+  const k = Math.min(1, 3600 / Math.max(W, H)); W = Math.max(50, Math.round(W * k)); H = Math.max(50, Math.round(H * k));
+  const m = squareToQuad(quad), sw = src.width, sh = src.height, sd = src.getContext("2d", { willReadFrequently: true }).getImageData(0, 0, sw, sh).data;
+  const out = document.createElement("canvas"); out.width = W; out.height = H; const od = out.getContext("2d").createImageData(W, H), o = od.data;
+  for (let y = 0; y < H; y++) { const v = (y + 0.5) / H; for (let x = 0; x < W; x++) { const u = (x + 0.5) / W, z = m[6] * u + m[7] * v + 1, X = (m[0] * u + m[1] * v + m[2]) / z - 0.5, Y = (m[3] * u + m[4] * v + m[5]) / z - 0.5;
+    const xi = Math.floor(X), yi = Math.floor(Y), fx = X - xi, fy = Y - yi, j = (y * W + x) * 4;
+    if (xi < 0 || yi < 0 || xi >= sw - 1 || yi >= sh - 1) { o[j] = o[j + 1] = o[j + 2] = 255; o[j + 3] = 255; continue; }
+    const a = (yi * sw + xi) * 4, b = a + 4, c = a + sw * 4, d = c + 4;
+    for (let ch = 0; ch < 3; ch++) o[j + ch] = (sd[a + ch] * (1 - fx) + sd[b + ch] * fx) * (1 - fy) + (sd[c + ch] * (1 - fx) + sd[d + ch] * fx) * fy;
+    o[j + 3] = 255; } }
+  out.getContext("2d").putImageData(od, 0, 0); return out;
+}
+// Evens out shadows and uneven light, then pushes paper to white and lines to dark.
+function cleanScan(c) {
+  const w = c.width, h = c.height, g = grayOf(c, 0, 0, w, h);
+  const sm = document.createElement("canvas"); sm.width = Math.max(8, Math.round(w / 24)); sm.height = Math.max(8, Math.round(h / 24));
+  const sg = sm.getContext("2d"); sg.filter = "blur(2px)"; sg.drawImage(c, 0, 0, sm.width, sm.height);
+  const bg = document.createElement("canvas"); bg.width = w; bg.height = h; const bgc = bg.getContext("2d"); bgc.imageSmoothingQuality = "high"; bgc.drawImage(sm, 0, 0, w, h);
+  const b = grayOf(bg, 0, 0, w, h), out = new Uint8Array(w * h);
+  for (let i = 0; i < g.length; i++) { const r = g[i] / Math.max(40, b[i]); out[i] = r >= 0.9 ? 255 : r <= 0.45 ? 0 : Math.round(255 * Math.pow((r - 0.45) / 0.45, 1.6)); }
+  return grayToCanvas(out, w, h);
+}
+
+/* ------------------------- Ask the AI about the whole drawing set ------------------------- */
+async function sheetTextLines(g) {
+  const t = (await pageText(g)).slice().sort((a, b) => Math.abs(a.y - b.y) > 4 ? a.y - b.y : a.x - b.x);
+  const lines = []; let cur = [], y = null; for (const it of t) { if (y !== null && Math.abs(it.y - y) > 4) { lines.push(cur.join(" ")); cur = []; } y = it.y; cur.push(it.s.trim()); } if (cur.length) lines.push(cur.join(" "));
+  return lines.filter(Boolean);
+}
+function askAboutSet() {
+  if (!S.ai) return toast("Turn on AI first (AI settings), using your own API key.");
+  if (!P()?.pages.length) return toast("Add drawings first.");
+  openDialog(`<div class="dlg-h"><h3>Ask about the whole drawing set</h3></div><div class="dlg-b"><textarea class="inp" id="askSetQ" rows="2" placeholder="e.g. Which sheets show panel LP-2? Where is the fire alarm panel? Which sheets have EF-1?">${esc(S.setQ || "")}</textarea>
+   <div id="askSetA" style="display:grid;gap:6px;max-height:46vh;overflow:auto"></div><p class="muted" style="margin:0;font-size:12px">Reads the text on every sheet (sheet names, tags, notes and schedules) and your takeoff. Scanned sheets and photos have no text, so only their names are sent. Uses your own AI key.</p></div>
+   <div class="dlg-f"><button class="btn" data-close>Close</button><button class="btn primary" id="askSetGo">Ask</button></div>`);
+  $("#askSetQ").focus();
+  $("#askSetQ").onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askSetGo").click(); } };
+  $("#askSetGo").onclick = async () => {
+    const q = $("#askSetQ").value.trim(); if (!q) return; S.setQ = q; const out = $("#askSetA"), btn = $("#askSetGo"); btn.disabled = true; out.innerHTML = `<p class="muted" style="margin:0">Reading ${P().pages.length} sheet${P().pages.length > 1 ? "s" : ""}…</p>`;
+    try {
+      const pages = P().pages.filter(g => !g.joinedInto), per = Math.max(600, Math.min(5000, Math.floor(70000 / Math.max(1, pages.length)))); let ctx = "";
+      for (const g of pages) { const lines = await sheetTextLines(g); const ticks = {}; for (const m of P().marks) if (m.page === g.id) { const it = itemOf(m.item); if (it) ticks[it.name] = (ticks[it.name] || 0) + 1; }
+        const tk = Object.entries(ticks).map(([n, c]) => `${n} ×${c}`).join("; ");
+        ctx += `\n=== SHEET: ${g.name}${g.note ? " (note: " + g.note + ")" : ""} ===\n${tk ? "Counted here: " + tk + "\n" : ""}${lines.length ? lines.join("\n").slice(0, per) : "(no text: scanned or photo sheet)"}\n`; }
+      const prompt = rulesText() + `\n\nBelow is the text found on each sheet of this drawing set. Answer the question using only this text and the counts. Point to the sheets that matter.\n${ctx}\n\nQUESTION: ${q}\n\nReply with only JSON: {"answer": a short plain-words answer (say plainly when the text doesn't show it), "sheets": [{"sheet": the exact sheet name from the === SHEET lines, "why": what is on that sheet, a few words, "find": a short exact piece of text from that sheet to highlight, or ""}]} with at most 12 sheets, most useful first.`;
+      const j = await S.ai.json(prompt, { modelTier: "default" });
+      const hits = (Array.isArray(j.sheets) ? j.sheets : []).map(h => ({ ...h, i: P().pages.findIndex(g => g.name === h.sheet || g.name.toLowerCase() === String(h.sheet || "").toLowerCase()) })).filter(h => h.i >= 0);
+      out.innerHTML = `<div class="msg a" style="white-space:pre-wrap">${esc(String(j.answer || "No answer."))}</div>` + (hits.length ? `<b class="eyebrow">Open a sheet</b>` + hits.map((h, k) => `<button class="btn ghost sm" data-seth="${k}" style="justify-content:flex-start;text-align:left"><b>${esc(P().pages[h.i].name)}</b>&nbsp;<span class="muted">${esc(String(h.why || "").slice(0, 90))}</span></button>`).join("") : "");
+      $$("[data-seth]").forEach(b => b.onclick = async () => { const h = hits[+b.dataset.seth]; closeDialog(); if (S.pageIdx !== h.i) await openPage(h.i); const f = String(h.find || "").trim().toLowerCase(); if (!f) return;
+        const g = P().pages[h.i], t = (await pageText(g)).find(x => x.s.toLowerCase().includes(f)) || (await pageText(g)).find(x => f.includes(x.s.trim().toLowerCase()) && x.s.trim().length > 2);
+        if (t) { S.findHit = { pg: g.id, r: [t.x, t.y, t.w, t.h] }; if (S.zoom < 1.2) S.zoom = 1.6; centerOn(t.x + t.w / 2, t.y + t.h / 2); } });
+    } catch (e) { out.innerHTML = `<p style="margin:0;color:var(--bad)">${esc(aiErr(e))}</p>`; }
+    btn.disabled = false;
+  };
+}
+
+/* ------------------------- Join sheets along a match line ------------------------- */
+const mulM = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
+const apM = (m, p) => [m[0] * p[0] + m[2] * p[1] + m[4], m[1] * p[0] + m[3] * p[1] + m[5]];
+function joinSheets() {
+  if (!P() || P().pages.length < 2) return toast("Add at least two sheets first.");
+  if (P().locked) return lockGuard();
+  const ok = (g) => ["pdf", "img"].includes(docOf(g)?.kind);
+  const opts = (sel) => P().pages.map((g, i) => ok(g) ? `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(g.name)}${g.joinedInto ? " (already joined)" : ""}</option>` : "").join("");
+  const a0 = S.pageIdx, b0 = a0 + 1 < P().pages.length ? a0 + 1 : a0 - 1;
+  openDialog(`<div class="dlg-h"><h3>Join sheets along a match line</h3></div><div class="dlg-b"><p class="muted" style="margin:0;line-height:1.5">For a floor split across two sheets. You'll click the <b>same two points on the match line</b> on each sheet (for example where two grid lines cross it). The app lines the sheets up into one joined sheet, so a run or area that crosses the line is drawn and counted once.</p>
+   <label class="field"><span>First sheet (its scale is used)</span><select class="inp" id="jnA">${opts(a0)}</select></label><label class="field"><span>Second sheet</span><select class="inp" id="jnB">${opts(b0)}</select></label>
+   <label class="row" style="gap:6px"><input type="checkbox" id="jnTrim" checked> Trim each sheet at the match line</label><label class="row" style="gap:6px"><input type="checkbox" id="jnMove" checked> Move counts, runs and markups already on these two sheets onto the joined sheet</label></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="jnGo">Pick the points</button></div>`);
+  $("#jnGo").onclick = async () => { const a = +$("#jnA").value, b = +$("#jnB").value; if (a === b) return toast("Pick two different sheets.");
+    S.join = { a: P().pages[a].id, b: P().pages[b].id, trim: $("#jnTrim").checked, move: $("#jnMove").checked, pa: [], pb: [] }; closeDialog(); await openPage(a); setTool("joinpick"); };
+}
+function joinHint() { const j = S.join; if (!j) return ""; const which = j.pa.length < 2 ? "first" : "second", n = (j.pa.length < 2 ? j.pa.length : j.pb.length) + 1; return `Join, ${which} sheet: click <b>point ${n} of 2</b> on the match line${n === 2 ? ", far from the first" : ""}. Zoom in for accuracy. Esc cancels.`; }
+async function joinClick(x, y) {
+  const j = S.join, pg = page(); if (!j) return setTool("select");
+  if (j.pa.length < 2) { if (pg.id !== j.a) return toast("Click on the first sheet."); j.pa.push([x, y]); if (j.pa.length === 2) { if (Math.hypot(j.pa[1][0] - j.pa[0][0], j.pa[1][1] - j.pa[0][1]) < 20) { j.pa.pop(); return toast("Pick the second point further along the match line."); } await openPage(P().pages.findIndex(g => g.id === j.b)); toast("Now click the same two points, in the same order, on this sheet."); } }
+  else { if (pg.id !== j.b) return toast("Click on the second sheet."); j.pb.push([x, y]); if (j.pb.length === 2) { setTool("select"); S.join = null; await buildJoin(j); return; } }
+  updHint(); draw();
+}
+function drawJoinPts(g, pg, px) { const j = S.join; if (!j) return; const pts = pg.id === j.a ? j.pa : pg.id === j.b ? j.pb : []; pts.forEach((p, i) => { g.strokeStyle = "#E5484D"; g.lineWidth = 2.5 * px; g.beginPath(); g.moveTo(p[0] - 12 * px, p[1]); g.lineTo(p[0] + 12 * px, p[1]); g.moveTo(p[0], p[1] - 12 * px); g.lineTo(p[0], p[1] + 12 * px); g.stroke(); label(g, p[0] + 16 * px, p[1] - 14 * px, String(i + 1), "#E5484D", px); }); if (pts.length === 2) { g.setLineDash([8 * px, 5 * px]); g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); g.lineTo(pts[1][0], pts[1][1]); g.stroke(); g.setLineDash([]); } }
+async function buildJoin(j) {
+  const A = P().pages.find(g => g.id === j.a), B = P().pages.find(g => g.id === j.b);
+  const [a1, a2] = j.pa, [b1, b2] = j.pb, bx = b2[0] - b1[0], by = b2[1] - b1[1], ax = a2[0] - a1[0], ay = a2[1] - a1[1], den = bx * bx + by * by;
+  const zr = (ax * bx + ay * by) / den, zi = (ay * bx - ax * by) / den, sc = Math.hypot(zr, zi);
+  if (sc < 0.5 || sc > 2) return toast("Those points don't seem to match: the second sheet would be stretched " + fmt(sc, 2) + "×. Try again with the same two points on both sheets.");
+  const simB = [zr, zi, -zi, zr, a1[0] - (zr * b1[0] - zi * b1[1]), a1[1] - (zi * b1[0] + zr * b1[1])], idM = [1, 0, 0, 1, 0, 0];
+  const corners = (g, m) => [[0, 0], [g.w, 0], [g.w, g.h], [0, g.h]].map(p => apM(m, p));
+  const all = [...corners(A, idM), ...corners(B, simB)], minX = Math.min(...all.map(p => p[0])), minY = Math.min(...all.map(p => p[1])), W = Math.max(...all.map(p => p[0])) - minX, H = Math.max(...all.map(p => p[1])) - minY;
+  if (W > 14000 || H > 14000) return toast("The joined sheet would be too big. Check the points.");
+  busy(true, "Joining sheets", `${A.name} + ${B.name}`);
+  try {
+    const L = PDFLib, out = await L.PDFDocument.create(), op = out.addPage([W, H]);
+    const toOut = [1, 0, 0, -1, -minX, H + minY]; // joined-sheet points (y down) -> PDF space (y up)
+    const place = async (g, m, keepPt) => { // m: sheet points -> first-sheet points
+      const doc = docOf(g), bytes = await getFileBytes(doc); if (!bytes) throw new Error("missing-file");
+      let base, draw;
+      if (doc.kind === "pdf") { const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true }); const [emb] = await out.embedPages([src.getPage(g.index)]); const pdf = await getPdf(doc), vp = (await pdf.getPage(g.index + 1)).getViewport({ scale: 1 }); const mb = src.getPage(g.index).getMediaBox();
+        base = mulM(vp.transform, [1, 0, 0, 1, mb.x, mb.y]); draw = () => op.drawPage(emb, { x: 0, y: 0 }); }
+      else { const im = /png/i.test(doc.mime || "") ? await out.embedPng(bytes) : await out.embedJpg(bytes); base = [g.w, 0, 0, -g.h, 0, g.h]; draw = () => op.drawImage(im, { x: 0, y: 0, width: 1, height: 1 }); }
+      const M = mulM(toOut, mulM(m, base));
+      op.pushOperators(L.pushGraphicsState());
+      if (j.trim) { const d = [ax / Math.hypot(ax, ay), ay / Math.hypot(ax, ay)]; let n = [-d[1], d[0]]; if ((keepPt[0] - a1[0]) * n[0] + (keepPt[1] - a1[1]) * n[1] < 0) n = [-n[0], -n[1]]; const Lg = 1e5;
+        const poly = [[a1[0] - d[0] * Lg, a1[1] - d[1] * Lg], [a1[0] + d[0] * Lg, a1[1] + d[1] * Lg], [a1[0] + d[0] * Lg + n[0] * Lg, a1[1] + d[1] * Lg + n[1] * Lg], [a1[0] - d[0] * Lg + n[0] * Lg, a1[1] - d[1] * Lg + n[1] * Lg]].map(p => apM(toOut, p));
+        op.pushOperators(L.moveTo(poly[0][0], poly[0][1]), ...poly.slice(1).map(p => L.lineTo(p[0], p[1])), L.closePath(), L.clip(), L.endPath()); }
+      op.pushOperators(L.concatTransformationMatrix(...M)); draw(); op.pushOperators(L.popGraphicsState());
+    };
+    await place(A, idM, [A.w / 2, A.h / 2]); await place(B, simB, apM(simB, [B.w / 2, B.h / 2]));
+    const bytes = (await out.save()).buffer;
+    commit();
+    const doc = { id: "d" + uid(), name: `Joined ${A.name} + ${B.name}.pdf`, kind: "pdf", mime: "application/pdf", size: bytes.byteLength, set: "Joined sheets", added: Date.now() };
+    await IDB.put("files", doc.id, bytes); S.files[doc.id] = bytes; P().docs.push(doc);
+    const ng = { id: "g" + uid(), docId: doc.id, index: 0, name: `${A.name} + ${B.name}`, w: W, h: H, excl: [], scale: A.scale ? { ...A.scale } : null, joinOf: [A.id, B.id] };
+    const mA = [1, 0, 0, 1, -minX, -minY], mB = mulM(mA, simB), maps = { [A.id]: mA, [B.id]: mB };
+    if (j.move) { const mv = (pid, p) => apM(maps[pid], p);
+      for (const m of P().marks) if (maps[m.page]) { [m.x, m.y] = mv(m.page, [m.x, m.y]); m.page = ng.id; }
+      for (const it of P().items) for (const m of it.maybes || []) if (maps[m.page]) { [m.x, m.y] = mv(m.page, [m.x, m.y]); m.page = ng.id; }
+      for (const r of P().runs) if (maps[r.page]) { r.pts = r.pts.map(p => mv(r.page, p)); r.page = ng.id; }
+      for (const mk of P().markups) if (maps[mk.page]) { if (mk.pts) mk.pts = mk.pts.map(p => mv(mk.page, p)); if (mk.box) { const p1 = mv(mk.page, [mk.box[0], mk.box[1]]), p2 = mv(mk.page, [mk.box[2], mk.box[3]]); mk.box = [p1[0], p1[1], p2[0], p2[1]]; } mk.page = ng.id; }
+      for (const g of [A, B]) for (const e of g.excl || []) { const p1 = apM(maps[g.id], [e[0], e[1]]), p2 = apM(maps[g.id], [e[0] + e[2], e[1] + e[3]]); ng.excl.push([Math.min(p1[0], p2[0]), Math.min(p1[1], p2[1]), Math.abs(p2[0] - p1[0]), Math.abs(p2[1] - p1[1])]); } }
+    A.joinedInto = ng.id; B.joinedInto = ng.id;
+    P().pages.push(ng); busy(false); changed({ sheets: true }); await openPage(P().pages.length - 1);
+    toast(`Joined into "${ng.name}". Take off on this sheet; the two originals are left out of "count on every sheet" so nothing is counted twice.`);
+  } catch (e) { busy(false); console.warn(e); toast(e.message === "missing-file" ? "One of those drawing files isn't stored on this computer. Open the sheet once to re-add it, then try again." : "Couldn't join those sheets. " + (e.message || "")); }
+}
+
+/* ------------------------- Menu bar, command finder and help centre ------------------------- */
+const inJob = () => !!S.proj && !$("#app").hidden;
+const needJob = (fn) => () => { if (!inJob()) return toast("Open a job first."); return fn(); };
+const clickId = (id) => () => { const el = document.getElementById(id); if (el) el.click(); };
+const EXPORTS = [["qdocx", "Quote (Word)"], ["qpdf", "Quote (PDF)"], ["txlsx", "Takeoff (Excel)"], ["tdocx", "Takeoff (Word)"], ["tpdf", "Takeoff (PDF)"], ["mpdf", "Marked-up drawings (PDF)"], ["rfq", "Supplier price request (Excel)"], ["sub", "Submittal package (Word)"], ["coxlsx", "Change order (Excel)"], ["handoff", "Won-job handoff package (Excel)"], ["qbo", "QuickBooks invoice (CSV)"]];
+function menuDefs() {
+  const tool = (t) => needJob(() => setTool(t));
+  return [
+    ["File", [
+      ["New blank job", () => startBlankJob(), ""], ["New job from a template…", () => newFromTemplate(), ""], ["Open drawings…", () => inJob() ? $("#fileAdd").click() : $("#fileHome").click(), "Ctrl+O"],
+      ["Scan a paper drawing…", () => scanDrawing(), ""], ["Add a blank sheet", needJob(() => addBlankSheet()), ""], "-",
+      ["Save now", needJob(() => saveNow().then(() => toast("Saved."))), "Ctrl+S"], ["Save as a job template…", needJob(() => runExport("tpl")), ""],
+      ["Export", EXPORTS.map(([x, n]) => [n, needJob(() => runExport(x)), ""])], "-",
+      ["Company details…", () => openSettings(), ""], ["Price book…", () => openPriceBook(), ""], ["Recycle bin…", () => openBin(), ""], "-", ["All jobs", () => showHome(), ""]]],
+    ["Edit", [
+      ["Undo", needJob(undo), "Ctrl+Z"], ["Redo", needJob(redo), "Ctrl+Y"], "-", ["Delete selected", needJob(deleteSel), "Del"],
+      ["Select", tool("select"), "V"], ["Pan", tool("pan"), "H"], "-",
+      ["Edit several items together…", needJob(() => { if (!S.bsel?.size) { switchTab("takeoff"); return toast("Tick the items in the Takeoff list first, then choose Edit together."); } bulkEdit(); }), ""],
+      ["Put items in build order…", needJob(sortItems), ""], ["Find text on drawings…", needJob(findText), "Ctrl+F"]]],
+    ["View", [
+      ["Fit the sheet", needJob(fit), "0"], ["Zoom in", needJob(() => zoomAt(1.25)), "+"], ["Zoom out", needJob(() => zoomAt(0.8)), "−"], "-",
+      ["Grey drawings (takeoff stands out)", needJob(toggleGray), "", () => GRAY], ["Sheets panel", needJob(() => togglePane("rail")), "[", () => PANES.rail], ["Right panel", needJob(() => togglePane("side")), "]", () => PANES.side],
+      ["Hide both panels", needJob(() => { const on = PANES.rail || PANES.side; togglePane("rail", !on); togglePane("side", !on); }), "F"], ["Full screen", () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.().catch(() => { }); }, "F11"], "-",
+      ["Simple mode", () => toggleSimple(), "", () => SIMPLE]]],
+    ["Sheets", [
+      ["Previous sheet", needJob(() => openPage(S.pageIdx - 1)), "PgUp"], ["Next sheet", needJob(() => openPage(S.pageIdx + 1)), "PgDn"], "-",
+      ["Set the scale", tool("scale"), "S"], ["Change sheet status", needJob(() => { cycleSheetStatus(page()?.id); renderSheets(); }), ""], "-",
+      ["Compare two sheets…", needJob(compareSheets), ""], ["Adds and omits report…", needJob(addsOmits), ""], ["Copy to other sheets…", needJob(copyToSheets), ""],
+      ["Join sheets at a match line…", needJob(joinSheets), ""], ["Scan a paper drawing…", () => scanDrawing(), ""]]],
+    ["Takeoff", [
+      ["Count", tool("count"), "C"], ["Read a legend", tool("legend"), "L"], ["Run (conduit, pipe, duct)", tool("measure"), "M"], ["Circuit", tool("circuit"), "U"], ["Area", tool("area"), "A"], ["Zone", tool("zone"), "Z"], ["Ignore an area", tool("exclude"), "X"], "-",
+      ["Add an item…", needJob(() => addManualItem()), ""], ["Import assemblies (CSV)…", needJob(importAssemblies), ""], ["Check for gaps…", needJob(showBidGaps), ""]]],
+    ["Markup", [["Cloud", tool("cloud"), "K"], ["Text", tool("text"), "T"], ["Callout", tool("callout"), "Q"], ["Arrow", tool("arrow"), "W"], ["Box", tool("rect"), "B"], ["Highlight", tool("highlight"), "I"], ["Stamp", tool("stamp"), "P"], ["Site photo", tool("photo"), "O"]]],
+    ["Quote", [
+      ["Open the quote", needJob(() => switchTab("quote")), ""], ["Draft scope with AI", needJob(() => { switchTab("quote"); draftScope(); }), ""], ["Read a supplier quote PDF…", needJob(readSupplierQuote), ""],
+      ["Quick quote (type or talk)…", needJob(quickQuote), ""], ["Compare saved versions…", needJob(compareCopies), ""], "-", ["Export the quote (PDF)", needJob(() => runExport("qpdf")), ""], ["Export the quote (Word)", needJob(() => runExport("qdocx")), ""]]],
+    ["Tools", [
+      ["Ask AI", needJob(() => switchTab("ai")), ""], ["Ask about the whole drawing set…", needJob(askAboutSet), ""], ["Ask about a boxed area", needJob(() => setTool("aibox")), ""],
+      ["Read a panel schedule", needJob(() => setTool("aipanel")), ""], ["Check plans against a schedule", needJob(() => setTool("aisched")), ""], ["Read a spec book…", needJob(readSpecBook), ""], "-",
+      ["Trade…", () => openTradePicker(), ""], ["AI settings…", () => inJob() ? switchTab("ai") : toast("Use AI settings on the Jobs screen."), ""]]],
+    ["Help", [
+      ["Find a command…", () => commandFinder(), "Ctrl+K"], ["Help centre", () => openHelp(), "F1"], ["How-to videos", () => openHelp("videos"), ""], ["Keyboard shortcuts", () => openHelp("keys"), ""], "-",
+      ["Start the tutorial", () => startTour(), ""], ["Welcome tour", () => showWelcome(), ""], ["What's new", () => openHelp("new"), ""], "-",
+      ["Contact support", () => { location.href = "mailto:info@20visionelectric.com?subject=" + encodeURIComponent("Take Off help (v" + V + ")"); }, ""], ["Suggest a feature", () => { location.href = "mailto:info@20visionelectric.com?subject=" + encodeURIComponent("Take Off suggestion"); }, ""], "-",
+      ["Check for updates", () => checkUpdates(), ""], ["About", () => openHelp("about"), ""]]],
+  ];
+}
+function flatCommands() { const out = []; for (const [m, items] of menuDefs()) for (const it of items) { if (it === "-") continue; if (Array.isArray(it[1])) it[1].forEach(s => out.push({ path: `${m} › ${it[0]} › ${s[0]}`, name: s[0], fn: s[1], key: s[2] })); else out.push({ path: `${m} › ${it[0]}`, name: it[0], fn: it[1], key: it[2] }); } return out; }
+function renderMenubar() {
+  const bar = $("#menubar"); if (!bar) return;
+  bar.innerHTML = menuDefs().map(([m], i) => `<button class="mb-top" data-mb="${i}" type="button">${m}</button>`).join("") + `<span class="spacer"></span><button class="mb-find" id="mbFind" type="button" title="Find a command (Ctrl+K)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>Find a command <kbd>Ctrl+K</kbd></button>`;
+  bar.onclick = (e) => { const t = e.target.closest("[data-mb]"); if (t) { const open = $("#mbMenu") && S.mbOpen === +t.dataset.mb; closeMb(); if (!open) openMb(+t.dataset.mb, t); return; } if (e.target.closest("#mbFind")) commandFinder(); };
+  bar.onmouseover = (e) => { const t = e.target.closest("[data-mb]"); if (t && $("#mbMenu") && S.mbOpen !== +t.dataset.mb) { closeMb(); openMb(+t.dataset.mb, t); } };
+}
+function mbItemsHtml(items, path) {
+  return items.map((it, i) => it === "-" ? '<div class="mb-sep"></div>' : Array.isArray(it[1]) ? `<div class="mb-sub"><button type="button" class="mb-it"><span class="ck"></span><span class="lb">${esc(it[0])}</span><span class="kb">›</span></button><div class="mb-dd mb-dd2">${mbItemsHtml(it[1], path + "." + i)}</div></div>`
+    : `<button type="button" class="mb-it" data-mi="${path}.${i}"><span class="ck">${it[3] && it[3]() ? "✓" : ""}</span><span class="lb">${esc(it[0])}</span><span class="kb">${esc(it[2] || "")}</span></button>`).join("");
+}
+function openMb(i, btn) {
+  const defs = menuDefs(), r = btn.getBoundingClientRect(), d = document.createElement("div"); d.className = "mb-dd"; d.id = "mbMenu";
+  d.style.left = Math.min(r.left, innerWidth - 300) + "px"; d.style.top = r.bottom + "px"; d.innerHTML = mbItemsHtml(defs[i][1], String(i)); document.body.appendChild(d); S.mbOpen = i; btn.classList.add("on");
+  d.onclick = (e) => { const b = e.target.closest("[data-mi]"); if (!b) return; const [a, ...rest] = b.dataset.mi.split(".").map(Number); let it = defs[a][1][rest[0]]; if (rest.length > 1) it = it[1][rest[1]]; closeMb(); try { it[1](); } catch (err) { if (err?.message !== "bid-locked") { console.warn(err); toast("That didn't work here."); } } };
+}
+function closeMb() { $("#mbMenu")?.remove(); S.mbOpen = null; $$("#menubar .mb-top.on").forEach(b => b.classList.remove("on")); }
+document.addEventListener("pointerdown", (e) => { if ($("#mbMenu") && !e.target.closest("#mbMenu,#menubar")) closeMb(); }, true);
+function commandFinder() {
+  closeMb(); const all = flatCommands();
+  openDialog(`<div class="dlg-h"><h3>Find a command</h3></div><div class="dlg-b"><input class="inp" id="cfQ" placeholder="Type what you want to do: scale, export, join, scan, legend…" autocomplete="off"><div id="cfL" style="display:grid;gap:2px;max-height:50vh;overflow:auto"></div></div><div class="dlg-f"><button class="btn" data-close>Close</button></div>`);
+  let sel = 0, shown = [];
+  const run = () => { const q = $("#cfQ").value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+    shown = all.filter(c => words.every(w => c.path.toLowerCase().includes(w) || (HELP_WORDS[c.name] || "").includes(w))).slice(0, 40); sel = Math.min(sel, Math.max(0, shown.length - 1));
+    $("#cfL").innerHTML = shown.length ? shown.map((c, i) => `<button type="button" class="btn ghost sm" data-cf="${i}" style="justify-content:space-between;text-align:left;${i === sel ? "background:var(--blue-soft)" : ""}"><span>${esc(c.path)}</span><span class="muted num">${esc(c.key || "")}</span></button>`).join("") : `<p class="muted" style="margin:0">Nothing matches. Try the <button class="linkbtn" id="cfHelp" type="button">help centre</button>.</p>`;
+    $$("[data-cf]").forEach(b => b.onclick = () => go(+b.dataset.cf)); $("#cfHelp") && ($("#cfHelp").onclick = () => openHelp(null, q)); };
+  const go = (i) => { const c = shown[i]; if (!c) return; closeDialog(); setTimeout(() => { try { c.fn(); } catch (e) { } }, 30); };
+  $("#cfQ").oninput = () => { sel = 0; run(); };
+  $("#cfQ").onkeydown = (e) => { if (e.key === "ArrowDown") { sel = Math.min(sel + 1, shown.length - 1); run(); e.preventDefault(); } if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); run(); e.preventDefault(); } if (e.key === "Enter") go(sel); };
+  run(); $("#cfQ").focus();
+}
+const HELP_WORDS = { "Set the scale": "calibrate dimension measure", "Join sheets at a match line…": "stitch combine split floor", "Scan a paper drawing…": "photo camera picture paper", "Read a legend": "symbols key", "Check for gaps…": "missing audit review", "Find text on drawings…": "search tag panel", "Open drawings…": "pdf add import load", "Run (conduit, pipe, duct)": "length linear wire measure", "Area": "square footage sq ft", "Count": "symbols devices fixtures" };
+
+/* Help centre: articles, videos, shortcuts, what's new */
+const VIDEO_URL = "https://app.20visionelectric.com/help/videos.json";
+const HELP = [
+  ["start", "Getting started", "Start a job, add drawings, set the scale, count, measure and send the quote.", `<ol><li><b>Start a job.</b> On the Jobs screen, drop your PDF drawing set on the page or press <b>Choose drawing files</b>. Every sheet opens in the Sheets panel on the left.</li><li><b>Set the scale</b> on each sheet (<kbd>S</kbd>). Pick the drawing scale from the list, or click both ends of a dimension you know and type its length. Use <b>Use on chosen sheets</b> to copy it.</li><li><b>Count.</b> With <b>Legend</b> (<kbd>L</kbd>), drag a box around the symbol legend and every symbol is read and counted on every sheet. Or use <b>Count</b> (<kbd>C</kbd>) and drag a tight box around one symbol.</li><li><b>Check the ticks.</b> Click to add a missed one; click a tick to remove it. Review possible matches in the Takeoff list.</li><li><b>Measure</b> runs (<kbd>M</kbd>) and areas (<kbd>A</kbd>).</li><li><b>Price and send.</b> Open the Quote tab, check labour and markup, then <b>Export</b> the quote to PDF or Word.</li></ol>`],
+  ["drawings", "Drawings and sheets", "Add sets and addenda, open files from email, scan paper plans, join split floors.", `<p><b>Add drawings:</b> <b>+ Add</b> in the Sheets panel, or drag PDFs onto the drawing. Later files are grouped as addenda.</p><p><b>Open from email or Files:</b> on Android, tap a PDF and choose <b>Open with</b> 20 Vision Material Take Off, or use <b>Share</b> from Gmail, Outlook or Drive. On a computer with the app installed, right-click a PDF and choose <b>Open with</b>. You can add it to the open job or start a new one.</p><p><b>Scan a paper drawing:</b> Sheets panel → <b>Scan a paper drawing</b>. Take a photo, drag the four corners onto the paper, and keep <b>Clean up</b> on. Then set the scale with two points of a known dimension.</p><p><b>Join sheets at a match line:</b> when one floor is split over two sheets, choose <b>Join sheets at a match line</b>, then click the same two points on the match line on each sheet. The joined sheet takes the first sheet's scale, and the two originals are left out of "count on every sheet" so nothing counts twice.</p><p><b>Find text</b> (<kbd>Ctrl+F</kbd>) searches every sheet for a tag or note. <b>Sheet status</b> (Not started → Checked) shows what is left.</p>`],
+  ["count", "Counting symbols", "Legend reading, template counts, possible matches and teaching the matcher.", `<p><b>Legend</b> (<kbd>L</kbd>): drag a box around the legend. Each symbol gets an item and is counted on every sheet.</p><p><b>Count</b> (<kbd>C</kbd>): drag a tight box around one symbol to count it everywhere. Click to add one by hand.</p><p><b>Possible matches</b> show with a confidence %. Review them least-sure-first; unticked ones are remembered as "not this" next time.</p><p><b>Ignore</b> (<kbd>X</kbd>) greys out title blocks, notes and legends so they aren't counted.</p><p><b>Count by text:</b> Find text → <b>Count these as an item</b> for devices drawn as tags (WP, GFI, EF-1).</p>`],
+  ["measure", "Runs, circuits and areas", "Conduit, pipe and duct runs, drops, fittings, areas, rooms and zones.", `<p><b>Run</b> (<kbd>M</kbd>): click along the route, double-click to finish. Hold Shift for straight lines. Tick <b>Arc</b> for curves.</p><p><b>Circuit</b> (<kbd>U</kbd>): click the panel, then each device; a drop is added at every device.</p><p><b>Fittings</b> can be counted from runs (bends, couplings, connectors).</p><p><b>Area</b> (<kbd>A</kbd>): click the corners. Options: one click per room, same fill colour, circle, and deductions.</p><p><b>Zone</b> (<kbd>Z</kbd>): name units or areas; the bid summary totals each zone across sheets.</p>`],
+  ["markup", "Markups and photos", "Clouds, text, callouts, stamps and site photos; marked-up PDF export.", `<p>The Markup tools (Cloud, Text, Callout, Arrow, Box, Highlight, Stamp) draw on the sheet and print on the <b>Marked-up drawings</b> PDF. <b>Site photo</b> (<kbd>O</kbd>) pins a photo to a spot.</p>`],
+  ["quote", "Pricing and the quote", "Price book, assemblies, labour, bid markups, alternates, change orders and exports.", `<p>Items take prices and labour units from the <b>Price book</b> (CSV import). Assemblies add their parts. The <b>Quote</b> tab has labour factor, job conditions, contingency, overhead, profit and bond, plus alternates, supplier quotes and change orders.</p><p><b>Check for gaps</b> finds items with no price or labour, unscaled sheets and unreviewed matches. <b>Lock</b> a bid when it goes out and save copies to compare later.</p><p><b>Export</b>: quote, takeoff, marked-up drawings, supplier price request, submittal, change order, handoff package and QuickBooks CSV.</p>`],
+  ["ai", "Optional AI", "Use your own Claude or OpenAI key to ask about sheets, read schedules and quotes.", `<p>Counting, measuring and quoting work without AI. To use AI, add your own API key in <b>AI settings</b>; usage is billed by your AI provider.</p><p><b>Ask about the whole drawing set</b> (Tools menu, or the Ask AI tab) reads the text on every sheet and answers with links that jump to each sheet. Also: ask about a boxed area, read a panel schedule, check plans against a schedule, read a spec book, read supplier quote PDFs and quick quotes.</p>`],
+  ["phone", "Using the phone app", "Pinch to zoom, panels, camera, sharing drawings in.", `<p>Pinch to zoom; tap <b>Sheets</b> and <b>Panel</b> at the top to open the side panels. The camera works for site photos, scanning paper drawings and receipts. Share PDFs from email into the app to start a job.</p>`],
+  ["trouble", "Fixing problems", "Missing drawings, slow sheets, AI errors, lost work.", `<ul><li><b>"Re-add this drawing"</b>: the file isn't on this computer yet. Choose the same file and every count comes back.</li><li><b>Slow on big sets:</b> thumbnails load as you scroll; hide panels with <kbd>F</kbd> for more room.</li><li><b>AI errors:</b> check your key and credit with your AI provider.</li><li><b>Deleted a job?</b> It stays in the <b>Recycle bin</b> for 30 days.</li><li><b>Something changed by mistake:</b> <kbd>Ctrl+Z</kbd> undoes.</li></ul>`],
+];
+const KEYS = [["V", "Select"], ["H or Space+drag", "Pan"], ["C", "Count"], ["L", "Legend"], ["M", "Run"], ["U", "Circuit"], ["A", "Area"], ["Z", "Zone"], ["S", "Scale"], ["X", "Ignore an area"], ["K / T / Q / W / B / I / P / O", "Cloud, Text, Callout, Arrow, Box, Highlight, Stamp, Photo"], ["Enter / double-click", "Finish a run or area"], ["Esc", "Cancel"], ["Delete", "Delete selected"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+F", "Find text on drawings"], ["Ctrl+K", "Find a command"], ["F1", "Help centre"], ["+ / − / 0", "Zoom in, out, fit"], ["PgUp / PgDn", "Previous / next sheet"], ["[ / ] / F", "Sheets panel, right panel, both"]];
+const NEWS = [["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
+let VIDEOS = null;
+async function loadVideos() { if (VIDEOS) return VIDEOS; try { const r = await fetch(VIDEO_URL, { cache: "no-cache" }); VIDEOS = r.ok ? ((await r.json()).videos || []) : []; } catch (e) { VIDEOS = null; return null; } return VIDEOS; }
+function openHelp(section = null, query = "") {
+  closeMb();
+  openDialog(`<div class="dlg-h"><h3>Help centre</h3></div><div class="dlg-b help"><input class="inp" id="hQ" placeholder="Search help: scale, legend, export, join sheets…" value="${esc(query)}" autocomplete="off">
+   <div class="row" style="gap:6px;flex-wrap:wrap"><button class="chip blue" data-hs="topics" type="button">Topics</button><button class="chip blue" data-hs="videos" type="button">How-to videos</button><button class="chip blue" data-hs="keys" type="button">Keyboard shortcuts</button><button class="chip blue" data-hs="new" type="button">What's new</button><button class="chip blue" data-hs="about" type="button">About</button></div>
+   <div id="hBody" style="max-height:56vh;overflow:auto;line-height:1.55"></div></div><div class="dlg-f"><button class="btn" id="hTour" type="button">Start the tutorial</button><span class="spacer"></span><button class="btn" data-close>Close</button></div>`);
+  const body = $("#hBody");
+  const show = async (s, arg) => {
+    if (s === "topics") { const q = $("#hQ").value.trim().toLowerCase(); const list = HELP.filter(h => !q || (h[1] + " " + h[2] + " " + h[3].replace(/<[^>]+>/g, " ")).toLowerCase().includes(q));
+      body.innerHTML = list.length ? list.map(h => `<button type="button" class="help-card" data-ht="${h[0]}"><b>${esc(h[1])}</b><span class="muted">${esc(h[2])}</span></button>`).join("") : `<p class="muted">No help topic matches "${esc(q)}". Try <b>Find a command</b> (Ctrl+K).</p>`; }
+    else if (s === "topic") { const h = HELP.find(x => x[0] === arg); body.innerHTML = `<button class="linkbtn" data-hs="topics" type="button">‹ All topics</button><h3 style="margin:8px 0">${esc(h[1])}</h3>${h[3]}` + await videoList(v => (v.topic || "") === h[0], true); }
+    else if (s === "videos") { body.innerHTML = `<p class="muted" style="margin:0 0 8px">Short videos made from the real app. New ones are added often.</p>` + await videoList(() => true); }
+    else if (s === "keys") body.innerHTML = `<table class="tbl" style="width:100%">${KEYS.map(k => `<tr><td style="white-space:nowrap"><kbd>${esc(k[0])}</kbd></td><td>${esc(k[1])}</td></tr>`).join("")}</table>`;
+    else if (s === "new") body.innerHTML = NEWS.map(n => `<p style="margin:0 0 8px"><b>Version ${n[0]}</b> — ${esc(n[1])}</p>`).join("");
+    else if (s === "about") body.innerHTML = `<p style="margin:0"><b>20 Vision Material Take Off</b>, version ${V}.<br>Takeoff, markup and quoting for every trade, by 20 Vision Electric Inc., Greater Toronto Area.</p><p class="muted">Jobs are stored on this device. AI is optional and uses your own key.</p><p>Support: <a href="mailto:info@20visionelectric.com">info@20visionelectric.com</a> · <a href="https://20visionelectric.com/take-off-app" target="_blank" rel="noopener">20visionelectric.com/take-off-app</a></p>`;
+    $$("#hBody [data-ht]").forEach(b => b.onclick = () => show("topic", b.dataset.ht)); $$("#hBody [data-hs]").forEach(b => b.onclick = () => show(b.dataset.hs));
+    $$("#hBody [data-vid]").forEach(b => b.onclick = () => playVideo(b.dataset.vid));
+  };
+  $$("[data-hs]").forEach(b => b.onclick = () => show(b.dataset.hs));
+  $("#hQ").oninput = () => show("topics"); $("#hTour").onclick = () => { closeDialog(); startTour(); };
+  show(section || "topics"); if (!section) $("#hQ").focus();
+}
+async function videoList(filter, compact = false) {
+  const vs = await loadVideos(); if (vs === null) return `<p class="muted">Videos need an internet connection.</p>`;
+  const list = vs.filter(filter); if (!list.length) return compact ? "" : `<p class="muted">The first videos are on their way.</p>`;
+  return (compact ? `<h4 style="margin:12px 0 6px">Videos</h4>` : "") + `<div class="vid-grid">${list.map(v => `<button type="button" class="help-card" data-vid="${esc(v.id)}">${v.poster ? `<img src="${esc(new URL(v.poster, VIDEO_URL).href)}" alt="" loading="lazy">` : ""}<b>${esc(v.title)}</b><span class="muted">${esc(v.summary || "")}${v.seconds ? ` · ${Math.round(v.seconds / 60) || 1} min` : ""}</span></button>`).join("")}</div>`;
+}
+function playVideo(id) {
+  const v = (VIDEOS || []).find(x => x.id === id); if (!v) return;
+  openDialog(`<div class="dlg-h"><h3>${esc(v.title)}</h3></div><div class="dlg-b"><video src="${esc(new URL(v.src, VIDEO_URL).href)}" controls autoplay playsinline style="width:100%;max-height:62vh;background:#000;border-radius:8px"></video><p class="muted" style="margin:0">${esc(v.summary || "")}</p></div><div class="dlg-f"><button class="btn" id="vBack" type="button">‹ All videos</button><span class="spacer"></span><button class="btn" data-close>Close</button></div>`);
+  $("#vBack").onclick = () => openHelp("videos");
+}
+async function checkUpdates() {
+  try { const reg = await navigator.serviceWorker?.getRegistration(); if (reg) { await reg.update(); if (reg.installing || reg.waiting) { toast("An update is ready.", [["Restart now", () => location.reload()]]); return; } } } catch (e) { }
+  toast(`You have version ${V}.` + (window.Capacitor?.isNativePlatform?.() ? " Updates come through Google Play." : " Reload the page any time to get the newest version."));
+}
+function helpKeys(e) {
+  if (e.key === "F1") { e.preventDefault(); openHelp(); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); commandFinder(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "o") { e.preventDefault(); (inJob() ? $("#fileAdd") : $("#fileHome")).click(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && inJob()) { e.preventDefault(); saveNow(); return; }
+  if (e.key === "Escape" && $("#mbMenu")) closeMb();
+}
+
 /* ------------------------- Tabs & events ------------------------- */
 function switchTab(t) { S.tab = t; $$(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["takeoff", "markups", "quote", "ai"].forEach(k => $("#pane-" + k).hidden = k !== t); if (t === "ai") renderAIPane(); else renderSide(); }
 let spaceDown = false;
 function bind() {
   window.addEventListener("resize", () => { sizeCanvas(); fitToolbar(); });
   $("#btnPB").onclick = openPriceBook;
-  document.addEventListener("click", (e) => { if (e.target.id === "btnFind") findText(); if (e.target.id === "btnAddsOmits") addsOmits(); }); $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => startTour();
+  document.addEventListener("click", (e) => { if (e.target.id === "btnFind") findText(); if (e.target.id === "btnAddsOmits") addsOmits(); }); $("#btnTpl").onclick = () => newFromTemplate(); $("#btnTrade").onclick = () => openTradePicker(); setTrade(TRADE); $("#btnTutorial").onclick = () => showWelcome(); $("#btnTour2").onclick = () => startTour(); $("#btnHelp").onclick = () => openHelp();
   $("#btnBlank").onclick = () => startBlankJob(); $("#btnBlankSheet").onclick = (e) => { e.preventDefault(); e.stopPropagation(); addBlankSheet(); };
   $("#btnSettings").onclick = openSettings; $("#btnHome").onclick = showHome; $("#btnSimple").onclick = toggleSimple;
   $("#fileHome").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
@@ -3387,7 +3766,7 @@ function bind() {
   $("#btnUndo").onclick = undo; $("#btnRedo").onclick = redo; $("#btnExport").onclick = (e) => { e.stopPropagation(); exportMenu(e.currentTarget); };
   $("#btnRail").onclick = () => $("#rail").classList.toggle("open"); $("#btnSide").onclick = () => $("#side").classList.toggle("open");
   $("#togRail").onclick = () => togglePane("rail"); $("#togSide").onclick = () => togglePane("side"); applyPanes();
-  $("#btnCompare").onclick = compareSheets; $("#btnCopySh").onclick = copyToSheets; $("#busyStop").onclick = () => stopMatching();
+  $("#btnCompare").onclick = compareSheets; renderMenubar(); $("#btnHelpH").onclick = () => openHelp(); window.addEventListener("keydown", helpKeys); $("#btnJoin").onclick = joinSheets; $("#btnScan").onclick = scanDrawing; $("#btnScanH").onclick = scanDrawing; listenForLaunchFiles(); $("#btnCopySh").onclick = copyToSheets; $("#busyStop").onclick = () => stopMatching();
   $("#zIn").onclick = () => zoomAt(1.25); $("#zOut").onclick = () => zoomAt(0.8); $("#zFit").onclick = fit; $("#zGray").onclick = toggleGray; $("#zGray").classList.toggle("on", GRAY);
   $("#toolbar").onclick = (e) => { const b = e.target.closest("[data-tool]"); if (b) setTool(b.dataset.tool); };
   $("#subbar").onchange = (e) => {
@@ -3419,7 +3798,7 @@ function bind() {
   $("#sheetList").onclick = (e) => {
     const st = e.target.closest("[data-shst]"); if (st) { e.stopPropagation(); return cycleSheetStatus(st.dataset.shst); }
     const sl = e.target.closest("[data-setlbl]"); if (sl) { const d = P().docs.find(x => x.id === sl.dataset.setlbl); openDialog(`<div class="dlg-h"><h3>Drawing set name</h3></div><div class="dlg-b"><p class="muted" style="margin:0">Name the issue this file belongs to, e.g. "Issued for tender", "Addendum 1", "Rev 2".</p><input class="inp" id="setNm" value="${esc(d.set)}"></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="setOk">Save</button></div>`); $("#setOk").onclick = () => { d.set = $("#setNm").value.trim() || d.set; closeDialog(); changed({ sheets: true }); }; return; }
-    const dd = e.target.closest("[data-deldoc]"); if (dd) { const d = P().docs.find(x => x.id === dd.dataset.deldoc); openDialog(`<div class="dlg-h"><h3>Remove ${esc(d.name)}?</h3></div><div class="dlg-b"><p style="margin:0">Its sheets and every count, run and markup on them are removed from this job. Undo brings them back.</p></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn danger" id="ddOk">Remove</button></div>`); $("#ddOk").onclick = () => { commit(); const ids = new Set(P().pages.filter(g => g.docId === d.id).map(g => g.id)); P().pages = P().pages.filter(g => !ids.has(g.id)); P().docs = P().docs.filter(x => x !== d); P().marks = P().marks.filter(m => !ids.has(m.page)); P().runs = P().runs.filter(m => !ids.has(m.page)); P().markups = P().markups.filter(m => !ids.has(m.page)); closeDialog(); changed({ sheets: true }); openPage(0); }; return; }
+    const dd = e.target.closest("[data-deldoc]"); if (dd) { const d = P().docs.find(x => x.id === dd.dataset.deldoc); openDialog(`<div class="dlg-h"><h3>Remove ${esc(d.name)}?</h3></div><div class="dlg-b"><p style="margin:0">Its sheets and every count, run and markup on them are removed from this job. Undo brings them back.</p></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn danger" id="ddOk">Remove</button></div>`); $("#ddOk").onclick = () => { commit(); const ids = new Set(P().pages.filter(g => g.docId === d.id).map(g => g.id)); P().pages = P().pages.filter(g => !ids.has(g.id)); P().docs = P().docs.filter(x => x !== d); P().marks = P().marks.filter(m => !ids.has(m.page)); P().runs = P().runs.filter(m => !ids.has(m.page)); P().markups = P().markups.filter(m => !ids.has(m.page)); P().pages.forEach(g => { if (ids.has(g.joinedInto)) delete g.joinedInto; }); closeDialog(); changed({ sheets: true }); openPage(0); }; return; }
     const b = e.target.closest("[data-page]"); if (b) { openPage(+b.dataset.page); $("#rail").classList.remove("open"); }
   };
   $("#sheetList").addEventListener("scroll", () => { clearTimeout(S.thT); S.thT = setTimeout(queueThumbs, 150); }, { passive: true });
@@ -3465,7 +3844,7 @@ function bind() {
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
   $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
   $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "bsAsk") return askReport($("#bsQ").value.trim()); if (e.target.id === "bsClear") { S.breakQ = ""; return renderQuote(); } if (e.target.id === "costScan") return scanReceipt(); if (e.target.id === "costAdd") return costDialog(); const cdx = e.target.closest("[data-costdel]"); if (cdx) { P().costs.splice(+cdx.dataset.costdel, 1); markDirty(); return renderQuote(); } if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
-  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && ["__box", "__sched", "__panel"].includes(s.dataset.sug)) { setTool({ __box: "aibox", __sched: "aisched", __panel: "aipanel" }[s.dataset.sug]); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
+  $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && s.dataset.sug === "__set") return askAboutSet(); if (s && ["__box", "__sched", "__panel"].includes(s.dataset.sug)) { setTool({ __box: "aibox", __sched: "aisched", __panel: "aipanel" }[s.dataset.sug]); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-quote").addEventListener("keydown", (e) => { if (e.target.id === "bsQ" && e.key === "Enter") askReport(e.target.value.trim()); });
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
   $("#dlg").addEventListener("click", (e) => { if (e.target.closest("[data-close]") || e.target === $("#dlg")) closeDialog(); });
@@ -3477,6 +3856,7 @@ function bind() {
     if ((e.ctrlKey || e.metaKey) && k === "f") { e.preventDefault(); findText(); return; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (k === " ") { spaceDown = true; return; }
+    if (k === "escape" && S.tool === "joinpick") { setTool("select"); toast("Join cancelled."); return; }
     if (k === "escape") { S.draft = null; S.sel = null; closePop(); draw(); return; }
     if (k === "enter") { finishDraft(); return; }
     if (k === "delete" || k === "backspace") { deleteSel(); return; }

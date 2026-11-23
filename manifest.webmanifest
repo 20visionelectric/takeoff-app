@@ -32,6 +32,13 @@
       "accept": {
         "application/pdf": [
           ".pdf"
+        ],
+        "image/png": [
+          ".png"
+        ],
+        "image/jpeg": [
+          ".jpg",
+          ".jpeg"
         ]
       }
     }

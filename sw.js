@@ -1,10 +1,10 @@
-// Offline cache for 20 Vision Material Take Off. Version ff5f5c9145
-const CACHE = "tv-ff5f5c9145";
+// Offline cache for 20 Vision Material Take Off. Version e5dcf421f1
+const CACHE = "tv-e5dcf421f1";
 const FILES = ["./", "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "index.html", "manifest.webmanifest", "platform-desktop.js", "platform-post.js", "platform-pre.js", "vendor/jszip.min.js", "vendor/pdf-lib.min.js", "vendor/pdf.min.mjs", "vendor/pdf.worker.min.mjs"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.origin !== location.origin) return;
+  if (e.request.method !== "GET" || u.origin !== location.origin || u.pathname.startsWith("/help/")) return;
   e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(CACHE).then(x => x.put(e.request, c)); return r; }).catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match("./"))));
 });

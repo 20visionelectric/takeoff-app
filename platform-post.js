@@ -133,7 +133,34 @@
     c.addEventListener("pointerup", up, true); c.addEventListener("pointercancel", up, true);
   }
 
-  function boot() { homeExtras(); pinch(); }
+  /* ---------------- Drawings opened or shared from other apps (Android) ---------------- */
+  var sharedBusy = false;
+  async function sharedIn() {
+    if (!T.isNative() || sharedBusy) return; var FS = (window.Capacitor && window.Capacitor.Plugins || {}).Filesystem; if (!FS) return;
+    sharedBusy = true;
+    try {
+      var r; try { r = await FS.readdir({ path: "shared-in", directory: "CACHE" }); } catch (e) { return; }
+      var list = (r.files || []).map(function (f) { return typeof f === "string" ? { name: f } : f; }).filter(function (f) { return !/\.part$/.test(f.name); });
+      if (!list.length) return;
+      var out = [];
+      for (var i = 0; i < list.length; i++) {
+        var f = list[i], p = "shared-in/" + f.name;
+        try {
+          var uri = f.uri || (await FS.getUri({ path: p, directory: "CACHE" })).uri;
+          var blob = await (await fetch(window.Capacitor.convertFileSrc(uri))).blob();
+          var name = f.name.replace(/^\d+-\d+-/, "");
+          var type = /\.pdf$/i.test(name) ? "application/pdf" : /\.png$/i.test(name) ? "image/png" : /\.jpe?g$/i.test(name) ? "image/jpeg" : (blob.type || "application/pdf");
+          out.push(new File([blob], name, { type: type }));
+        } catch (e) { console.warn("shared file", e); }
+        try { await FS.deleteFile({ path: p, directory: "CACHE" }); } catch (e) { }
+      }
+      if (out.length && window.openIncomingFiles) window.openIncomingFiles(out);
+    } finally { sharedBusy = false; }
+  }
+  window.TVSharedIn = sharedIn;
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "visible") setTimeout(sharedIn, 400); });
+
+  function boot() { homeExtras(); pinch(); setTimeout(sharedIn, 800); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
   document.addEventListener("deviceready", initBilling, false);
   if (!T.isNative()) entitled = true;
