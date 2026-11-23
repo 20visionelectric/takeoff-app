@@ -401,7 +401,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.17.1";
+const V = "4.18.0", PDFJS_V = "4.10.38"; window.V = V;
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -639,6 +639,7 @@ const ICON = {
   cloud: '<path d="M6 17a4 4 0 01-.5-8 5 5 0 019.6-1.5A4 4 0 0118 17z"/>',
   text: '<path d="M5 6h14M12 6v13M9 19h6"/>',
   arrow: '<path d="M5 19L19 5M10 5h9v9"/>',
+  dim: '<path d="M4 15h16M4 11v8M20 11v8M5.5 16.5l-3-3M21.5 16.5l-3-3"/><path d="M9 10h6" stroke-width="1.4"/>',
   rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
   highlight: '<path d="M4 20h7M14 4l6 6-9 9H5v-6z"/>',
   stamp: '<path d="M8 21h8M6 17h12v-3a3 3 0 00-3-3h-1V8a2 2 0 10-4 0v3H9a3 3 0 00-3 3z"/>',
@@ -655,7 +656,7 @@ const svgI = (k, w = 20) => `<svg width="${w}" height="${w}" viewBox="0 0 24 24"
 /* ------------------------- App state ------------------------- */
 const S = {
   proj: null, pageIdx: 0, tool: "select", activeItem: null, zoom: 1, panX: 0, panY: 0,
-  cache: new Map(), pdfs: {}, files: {}, undo: [], redo: [], sel: null, draft: null, drag: null,
+  cache: new Map(), pdfs: {}, pdfLocked: {}, files: {}, undo: [], redo: [], sel: null, draft: null, drag: null,
   hidden: new Set(), scope: "all", tab: "takeoff", ai: null, aiImages: false, chat: [],
   compare: null, markStyle: { color: "#E5484D", stamp: "REVISED" }, measureItem: null,
 };
@@ -791,8 +792,31 @@ async function getPdf(doc) {
   if (S.pdfs[doc.id]) return S.pdfs[doc.id];
   await pdfReady; if (!window.pdfjsLib) throw new Error("The PDF reader didn't load. Check your internet connection and reload.");
   const b = await getFileBytes(doc); if (!b) throw new Error("missing-file");
-  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(b.slice(0)), isEvalSupported: false }).promise;
+  let pw = await IDB.get("kv", "pdfpw:" + doc.id).catch(() => null), wrong = false, pdf;
+  for (;;) {
+    try { pdf = await pdfjsLib.getDocument({ data: new Uint8Array(b.slice(0)), isEvalSupported: false, ...(pw ? { password: pw } : {}) }).promise; break; }
+    catch (e) {
+      if (e?.name !== "PasswordException") throw e;
+      wrong = !!pw; pw = await askPdfPassword(doc.name, wrong);
+      if (pw == null) throw new Error(`${doc.name} is locked with a password. Open the sheet again to enter it.`);
+    }
+  }
+  if (pw) { S.pdfLocked[doc.id] = true; IDB.put("kv", "pdfpw:" + doc.id, pw).catch(() => { }); }
   S.pdfs[doc.id] = pdf; return pdf;
+}
+/* Locked (password-protected) drawing sets: ask for the password, keep it on this device with the job. */
+function askPdfPassword(name, wrong) {
+  return new Promise(res => {
+    const bz = $("#busy"), wasBusy = bz && !bz.hidden; if (wasBusy) bz.hidden = true;
+    openDialog(`<div class="dlg-h"><h3>This drawing set is locked</h3></div><div class="dlg-b"><p style="margin:0">${esc(name)} needs a password to open.${wrong ? ' <b style="color:var(--bad)">That password didn\'t work. Try again.</b>' : ""}</p><input class="inp" id="pwIn" type="password" autocomplete="off" placeholder="Password"><p class="muted" style="margin:0;font-size:12.5px">Ask whoever sent the drawings. The password stays on this device so the set opens next time without asking.</p></div>
+     <div class="dlg-f"><button class="btn" id="pwNo" type="button">Skip</button><button class="btn primary" id="pwOk" type="button">Open</button></div>`);
+    let done = false; const onClose = () => { if (!$("#dlg").open) fin(null); };
+    const fin = (v) => { if (done) return; done = true; $("#dlg").removeEventListener("close", onClose); closeDialog(); if (wasBusy) bz.hidden = false; res(v); };
+    $("#pwIn").focus();
+    $("#pwOk").onclick = () => fin($("#pwIn").value); $("#pwNo").onclick = () => fin(null);
+    $("#pwIn").onkeydown = (e) => { if (e.key === "Enter") fin($("#pwIn").value); };
+    $("#dlg").addEventListener("close", onClose);
+  });
 }
 async function renderPage(pg) {
   const hit = S.cache.get(pg.id); if (hit) { S.cache.delete(pg.id); S.cache.set(pg.id, hit); return hit; }
@@ -1055,6 +1079,7 @@ function drawNow() {
   if (ai?.maybes?.length) for (const m of ai.maybes.filter(m => m.page === pg.id)) { g.setLineDash([3 * px, 3 * px]); g.strokeStyle = "#E9A800"; g.lineWidth = 2 * px; g.beginPath(); g.arc(m.x, m.y, R * 1.2, 0, 7); g.stroke(); g.setLineDash([]); }
   // template boxes of active item
   if (ai) for (const tp of ai.templates || []) if (tp.page === pg.id) { g.strokeStyle = ai.color; g.lineWidth = 1.5 * px; g.setLineDash([5 * px, 3 * px]); g.strokeRect(tp.x, tp.y, tp.w / tp.ppt, tp.h / tp.ppt); g.setLineDash([]); }
+  if (S.snapHint && SNAP_TOOLS.includes(S.tool)) drawSnap(g, S.snapHint, px);
   drawOverlayUI(g);
 }
 function runLen(r, pg) { const L = realLen(r.pts, pg); if (L == null) return null; return L * (1 + (r.extra ?? itemOf(r.item)?.waste ?? 0) / 100) + (r.drops || 0) * (r.dropLen || 0) * (P().units === "m" ? 1 : M_PER_FT); }
@@ -1066,6 +1091,72 @@ function label(g, x, y, t, color, px) {
 function cloudPath(g, x, y, w, h, px) {
   const r = Math.max(6 * px, Math.min(w, h) / 8); const seg = (x1, y1, x2, y2) => { const L = Math.hypot(x2 - x1, y2 - y1), n = Math.max(1, Math.round(L / (r * 1.6))); for (let i = 0; i < n; i++) { const ax = x1 + (x2 - x1) * i / n, ay = y1 + (y2 - y1) * i / n, bx = x1 + (x2 - x1) * (i + 1) / n, by = y1 + (y2 - y1) * (i + 1) / n; const mx = (ax + bx) / 2, my = (ay + by) / 2; const nx = -(by - ay), ny = (bx - ax), nl = Math.hypot(nx, ny) || 1; g.quadraticCurveTo(mx + nx / nl * r * -0.9, my + ny / nl * r * -0.9, bx, by); } };
   g.beginPath(); g.moveTo(x, y); seg(x, y, x + w, y); seg(x + w, y, x + w, y + h); seg(x + w, y + h, x, y + h); seg(x, y + h, x, y); g.closePath();
+}
+/* Dimension markups: a dimension line with end ticks and its scaled length. Not added to quantities. */
+function dimTxt(m) {
+  if (m == null) return "set scale";
+  if (P().units === "m") return m < 1 ? fmt(m * 1000, 0) + " mm" : fmt(m, 2) + " m";
+  let inch = Math.round(m / 0.0254 * 2) / 2, ft = Math.floor(inch / 12); inch = inch - ft * 12; if (inch >= 12) { ft++; inch -= 12; }
+  const ins = Number.isInteger(inch) ? String(inch) : Math.floor(inch) + " 1/2";
+  return ft ? `${ft}'-${ins}"` : `${ins}"`;
+}
+function drawDim(g, a, b, color, px, pg) {
+  const L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-6) return;
+  const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nx = -uy, ny = ux, T = 6 * px, E = 9 * px;
+  g.save(); g.strokeStyle = color; g.fillStyle = color; g.lineCap = "round"; g.lineWidth = 1.6 * px;
+  g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]);
+  for (const p of [a, b]) { g.moveTo(p[0] - nx * E, p[1] - ny * E); g.lineTo(p[0] + nx * E, p[1] + ny * E); g.moveTo(p[0] - (ux + nx) * T, p[1] - (uy + ny) * T); g.lineTo(p[0] + (ux + nx) * T, p[1] + (uy + ny) * T); }
+  g.stroke();
+  let ang = Math.atan2(uy, ux); if (ang > Math.PI / 2 || ang < -Math.PI / 2) ang += Math.PI;
+  const t = dimTxt(realLen([a, b], pg)), fs = 12 * px; g.font = `600 ${fs}px "IBM Plex Mono", monospace`;
+  const tw = g.measureText(t).width + 8 * px, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+  g.translate(mx, my); g.rotate(ang); g.fillStyle = "rgba(255,255,255,.94)"; g.fillRect(-tw / 2, -fs - 7 * px, tw, fs + 5 * px);
+  g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "bottom"; g.fillText(t, 0, -4 * px); g.restore();
+}
+/* Snap: lock a point to your own run/area points, then to corners and line crossings on the drawing, then onto a straight line. */
+const SNAP_TOOLS = ["measure", "area", "scale", "circuit", "zone", "dim"];
+let SNAP = true; try { SNAP = localStorage.getItem("tv-snap") !== "0"; } catch (e) { }
+function setSnap(on) { SNAP = !!on; try { localStorage.setItem("tv-snap", SNAP ? "1" : "0"); } catch (e) { } if (!SNAP) S.snapHint = null; renderSubbar(); updHint(); draw(); }
+function snapAt(pg, x, y) {
+  const tol = 12 / S.zoom; let best = null, bd = tol;
+  const near = (px, py, kind) => { const d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { x: px, y: py, kind }; } };
+  for (const r of P().runs) if (r.page === pg.id) for (const q of r.pts) near(q[0], q[1], "point");
+  for (const mk of P().markups) if (mk.page === pg.id && mk.pts) for (const q of mk.pts) near(q[0], q[1], "point");
+  if (S.draft?.pts?.length > 2 && (S.draft.kind === "area" || S.draft.kind === "zone")) near(S.draft.pts[0][0], S.draft.pts[0][1], "point");
+  if (best) return best;
+  const hit = S.cache.get(pg.id); if (!hit?.canvas || S.compare) return null;
+  const c = hit.canvas, k = c.width / pg.w, R = Math.max(3, Math.min(60, Math.round(tol * k))), Lr = Math.max(8, Math.round(4 * k)), W = R + Lr;
+  const cx = Math.round(x * k), cy = Math.round(y * k), x0 = Math.max(0, cx - W), y0 = Math.max(0, cy - W), x1 = Math.min(c.width, cx + W + 1), y1 = Math.min(c.height, cy + W + 1), w = x1 - x0, h = y1 - y0;
+  if (w < 3 || h < 3) return null;
+  let data; try { data = c.getContext("2d", { willReadFrequently: true }).getImageData(x0, y0, w, h).data; } catch (e) { return null; }
+  const dark = new Uint8Array(w * h); for (let i = 0; i < w * h; i++) dark[i] = data[i * 4] * 0.3 + data[i * 4 + 1] * 0.59 + data[i * 4 + 2] * 0.11 < 150 ? 1 : 0;
+  const D = (i, j) => i >= 0 && j >= 0 && i < w && j < h && dark[j * w + i];
+  const run = (i, j, di, dj) => { let n = 0; while (n < 2 * Lr && D(i + di * (n + 1), j + dj * (n + 1))) n++; return n; };
+  const ox = cx - x0, oy = cy - y0, Rr = R * R; let corner = null, cd = Infinity, line = null, ld = Infinity;
+  for (let j = Math.max(0, oy - R); j <= Math.min(h - 1, oy + R); j++) for (let i = Math.max(0, ox - R); i <= Math.min(w - 1, ox + R); i++) {
+    if (!dark[j * w + i]) continue; const d2 = (i - ox) ** 2 + (j - oy) ** 2; if (d2 > Rr) continue;
+    const l = run(i, j, -1, 0), r = run(i, j, 1, 0), u = run(i, j, 0, -1), dn = run(i, j, 0, 1);
+    if ((l >= Lr || r >= Lr) && (u >= Lr || dn >= Lr)) { if (d2 < cd) { cd = d2; corner = [i, j]; } }
+    else if (l + r >= 2 * Lr || u + dn >= 2 * Lr) { if (d2 < ld) { ld = d2; line = [i, j, l + r >= u + dn ? "h" : "v"]; } }
+  }
+  const toPtc = (i, j) => [(i + x0 + 0.5) / k, (j + y0 + 0.5) / k];
+  if (corner) { // centre of the crossing: average the corner pixels close to the nearest one
+    let sx = 0, sy = 0, n = 0; for (let j = corner[1] - 4; j <= corner[1] + 4; j++) for (let i = corner[0] - 4; i <= corner[0] + 4; i++) { if (!D(i, j)) continue; const l = run(i, j, -1, 0), r = run(i, j, 1, 0), u = run(i, j, 0, -1), dn = run(i, j, 0, 1); if ((l >= Lr || r >= Lr) && (u >= Lr || dn >= Lr)) { sx += i; sy += j; n++; } }
+    const [px2, py2] = toPtc(sx / n, sy / n); return { x: px2, y: py2, kind: "corner" };
+  }
+  if (line) { // onto the middle of the line's thickness, straight across from the cursor
+    const [i, j, dir] = line;
+    if (dir === "h") { let a = j, b2 = j; while (D(i, a - 1)) a--; while (D(i, b2 + 1)) b2++; const p2 = toPtc(ox, (a + b2) / 2); return { x: p2[0], y: p2[1], kind: "line" }; }
+    let a = i, b2 = i; while (D(a - 1, j)) a--; while (D(b2 + 1, j)) b2++; const p2 = toPtc((a + b2) / 2, oy); return { x: p2[0], y: p2[1], kind: "line" };
+  }
+  return null;
+}
+function drawSnap(g, sp, px) {
+  g.save(); g.strokeStyle = "#E8590C"; g.lineWidth = 2 * px; const r = 6 * px;
+  if (sp.kind === "corner") g.strokeRect(sp.x - r, sp.y - r, 2 * r, 2 * r);
+  else if (sp.kind === "point") { g.beginPath(); g.arc(sp.x, sp.y, r, 0, 7); g.stroke(); }
+  else { g.beginPath(); g.moveTo(sp.x - r, sp.y - r); g.lineTo(sp.x + r, sp.y + r); g.moveTo(sp.x + r, sp.y - r); g.lineTo(sp.x - r, sp.y + r); g.stroke(); }
+  g.restore();
 }
 function drawMarkup(g, mk, px, sel) {
   g.save(); g.strokeStyle = mk.color; g.fillStyle = mk.color; g.lineWidth = (mk.lw || 2.5) * px; g.lineCap = "round"; g.lineJoin = "round";
@@ -1080,6 +1171,7 @@ function drawMarkup(g, mk, px, sel) {
     g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fillStyle = "#13203A"; g.fill(); g.lineWidth = 2 * px; g.strokeStyle = "#fff"; g.stroke(); g.fillStyle = "#fff"; g.fillRect(cx - 6 * px, cy - 3.5 * px, 12 * px, 8 * px); g.beginPath(); g.arc(cx, cy + .5 * px, 2.6 * px, 0, 7); g.fillStyle = "#13203A"; g.fill();
     g.font = `bold ${10 * px}px system-ui,sans-serif`; g.fillStyle = "#13203A"; g.fillText("Photo " + n + (mk.note ? ": " + String(mk.note).slice(0, 40) : ""), cx + r + 3 * px, cy + 3.5 * px); }
   else if (mk.type === "zone" && mk.pts) drawZone(g, mk, px);
+  else if (mk.type === "dim" && mk.pts?.length >= 2) drawDim(g, mk.pts[0], mk.pts[1], mk.color, px, mk.page ? P().pages.find(q => q.id === mk.page) : page());
   else if (mk.type === "callout" && mk.box) drawCallout(g, mk, px);
   else if (mk.type === "area" && mk.pts) { if (mk.deduct) g.setLineDash([6 * px, 4 * px]); g.globalAlpha = .18; g.beginPath(); mk.pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); g.fill(); g.globalAlpha = 1; g.stroke(); const c = mk.pts.reduce((a, p) => [a[0] + p[0] / mk.pts.length, a[1] + p[1] / mk.pts.length], [0, 0]); label(g, c[0], c[1], (mk.room ? mk.room + " · " : "") + (mk.deduct ? "DEDUCT − " : "") + areaTxt(polyArea(mk.pts), page()) + " · " + lenTxt(realLen([...mk.pts, mk.pts[0]], page())) + " around", mk.color, px); }
   if (sel) { g.setLineDash([4 * px, 3 * px]); g.strokeStyle = "#13203A"; g.lineWidth = 1 * px; const b = markupBounds(mk); g.strokeRect(b[0] - 4 * px, b[1] - 4 * px, b[2] + 8 * px, b[3] + 8 * px); g.setLineDash([]); }
@@ -1099,6 +1191,7 @@ function drawOverlayUI(g) {
   if (d.pts) {
     const col = d.kind === "measure" ? (itemOf(S.measureItem)?.color || "#1554D1") : d.kind === "area" ? S.markStyle.color : d.kind === "zone" ? "#8E4EC6" : "#E8590C";
     const pts = d.hover ? [...d.pts, d.hover] : d.pts;
+    if (d.kind === "dim") { if (pts.length > 1) drawDim(g, pts[0], pts[1], S.markStyle.color, px, page()); else { g.fillStyle = "#fff"; g.beginPath(); g.arc(pts[0][0], pts[0][1], 4 * px, 0, 7); g.fill(); g.strokeStyle = S.markStyle.color; g.lineWidth = 1.5 * px; g.stroke(); } g.restore(); return; }
     g.strokeStyle = col; g.lineWidth = 3 * px; g.setLineDash(d.kind === "scale" ? [6 * px, 4 * px] : []); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if ((d.kind === "area" || d.kind === "zone") && pts.length > 2) g.closePath(); g.stroke(); g.setLineDash([]);
     for (const p of d.pts) { g.fillStyle = "#fff"; g.beginPath(); g.arc(p[0], p[1], 4 * px, 0, 7); g.fill(); g.strokeStyle = col; g.stroke(); }
     if (pts.length > 1) { const L = d.kind === "area" || d.kind === "zone" ? areaTxt(polyArea(pts), page()) : (d.kind === "scale" ? fmt(Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]), 0) + " pt" : lenTxt(realLen(pts, page()))); const q = pts[pts.length - 1]; label(g, q[0] + 30 * px, q[1] - 16 * px, L, col, px); }
@@ -1154,7 +1247,7 @@ async function addFiles(files) {
         const bmp = await createImageBitmap(new Blob([b], { type: f.type }));
         P().pages.push({ id: "g" + uid(), docId: doc.id, index: 0, name: doc.name.replace(/\.[^.]+$/, ""), w: bmp.width * 72 / 150, h: bmp.height * 72 / 150, excl: [], scale: null });
       }
-    } catch (e) { toast(`Couldn't read ${f.name}. Is it a valid PDF?`); P().docs = P().docs.filter(d => d.id !== doc.id); }
+    } catch (e) { toast(/locked with a password/.test(e.message || "") ? `Skipped ${f.name}: it needs its password. Add it again when you have it.` : `Couldn't read ${f.name}. Is it a valid PDF?`); P().docs = P().docs.filter(d => d.id !== doc.id); delete S.pdfs[doc.id]; }
     uploadAsset(doc, b, f.type);
   }
   busy(false); changed({ sheets: true }); openPage(first);
@@ -1183,7 +1276,7 @@ async function guessScale(pp) {
 /* ------------------------- Tools ------------------------- */
 const TOOLS = [
   ["select", "Select", "V"], ["pan", "Pan", "H"], "|", ["count", "Count", "C"], ["legend", "Legend", "L"], ["measure", "Run", "M"], ["circuit", "Circuit", "U"], ["area", "Area", "A"], ["zone", "Zone", "Z"], ["scale", "Scale", "S"], "|",
-  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["callout", "Callout", "Q"], ["arrow", "Arrow", "W"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], ["photo", "Photo", "O"], "|", ["exclude", "Ignore", "X"],
+  ["cloud", "Cloud", "K"], ["text", "Text", "T"], ["callout", "Callout", "Q"], ["arrow", "Arrow", "W"], ["dim", "Dimension", "D"], ["rect", "Box", "B"], ["highlight", "Highlight", "I"], ["stamp", "Stamp", "P"], ["photo", "Photo", "O"], "|", ["exclude", "Ignore", "X"],
 ];
 function fitToolbar() { const tb = $("#toolbar"); if (!tb) return; tb.classList.remove("compact"); if (tb.scrollWidth > tb.clientWidth + 2) tb.classList.add("compact"); }
 function renderToolbar() {
@@ -1210,13 +1303,14 @@ function updHint() {
     aipanel: `<b>Drag a box</b> around the whole panel schedule table.`,
     scale: `Pick a drawing scale above, or click two points of a known dimension to calibrate.`,
     joinpick: joinHint(),
-    cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`,
+    cloud: `Drag to draw a revision cloud.`, rect: `Drag to draw a box.`, highlight: `Drag across what you want to highlight.`, arrow: `Drag from the tail to the point.`, dim: `Click the two ends of what you want to dimension. The scaled length shows on the drawing; it isn't added to quantities.` + (pg.scale ? "" : ` <b style="color:var(--bad)">Set this sheet's scale first</b>.`),
     text: `Click where the note goes, then type it.`, stamp: `Click to place the stamp shown above.`,
     photo: `Click a spot on the sheet, then take or choose a photo. With the Select tool, click a camera pin to see the photo.`,
     exclude: `Drag a box over the title block, notes or legend so counting ignores it. Click a grey zone to remove it.`,
   };
   const jn = pg.joinedInto && P().pages.find(x => x.id === pg.joinedInto);
-  h.innerHTML = (jn ? `<span class="chip amber" style="margin-right:6px" title="Take off on the joined sheet so nothing is counted twice">Joined into ${esc(jn.name)}</span>` : "") + (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.fillMatch ? "<b>Click inside one coloured fill</b>: every area with the same colour on this sheet is added." : S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "");
+  const sn = SNAP_TOOLS.includes(S.tool) && SNAP ? ` <span class="muted">Snap is on: points lock to line ends and corners (hold Alt to place freely, N turns it off).</span>` : "";
+  h.innerHTML = (jn ? `<span class="chip amber" style="margin-right:6px" title="Take off on the joined sheet so nothing is counted twice">Joined into ${esc(jn.name)}</span>` : "") + (pg.scale ? `<span class="chip blue" style="margin-right:6px">${esc(pg.scale.label)}</span>` : "") + (S.tool === "area" && S.fillMatch ? "<b>Click inside one coloured fill</b>: every area with the same colour on this sheet is added." : S.tool === "area" && S.roomFill ? T.room : S.tool === "area" && S.areaCircle ? "Click the <b>centre</b>, then a point on the <b>edge</b>." : S.tool === "measure" && S.runArc ? "Arc: click the <b>start</b>, a point on the <b>curve</b>, then the <b>end</b>." : T[S.tool] || "") + (S.tool === "area" && (S.fillMatch || S.roomFill || S.areaCircle) ? "" : sn);
 }
 function renderSubbar() {
   const b = $("#subbar"); let h = "";
@@ -1233,6 +1327,8 @@ function renderSubbar() {
     h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
     if (S.tool === "stamp") h += `<select class="inp" id="stampSel" style="width:auto">${["REVISED", "APPROVED", "AS BUILT", "FOR REVIEW", "NOT IN CONTRACT", "FIELD VERIFY"].map(s => `<option ${S.markStyle.stamp === s ? "selected" : ""}>${s}</option>`).join("")}</select>`;
   }
+  if (S.tool === "dim") h += `<span class="eyebrow">Colour</span>` + ["#E5484D", "#1554D1", "#12A150", "#E9A800", "#8E4EC6", "#13203A"].map(c => `<button class="dot" data-mcol="${c}" style="width:20px;height:20px;background:${c};${S.markStyle.color === c ? "outline:2px solid var(--ink);outline-offset:2px" : ""}" aria-label="Colour ${c}"></button>`).join("");
+  if (SNAP_TOOLS.includes(S.tool)) h += `<label class="row" style="gap:4px;font-size:13px;margin-left:6px" title="Lock points to line ends, corners and walls on the drawing (N). Hold Alt to place a point freely."><input type="checkbox" id="snapSel" ${SNAP ? "checked" : ""}> Snap</label>`;
   b.innerHTML = h; b.hidden = !h;
 }
 
@@ -1249,7 +1345,8 @@ function onDown(e) {
 }
 const itemMk = (id) => P().markups.find(m => m.id === id);
 function onMove(e) {
-  const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top, [x, y] = toPt(sx, sy);
+  const r = cv().getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top; let [x, y] = toPt(sx, sy);
+  if (!ptr && SNAP_TOOLS.includes(S.tool) && page()) { const sp = SNAP && !e.altKey && !(S.tool === "area" && !S.draft && (S.fillMatch || S.roomFill)) ? snapAt(page(), x, y) : null; const had = !!S.snapHint; S.snapHint = sp; if (sp) { x = sp.x; y = sp.y; } if (had || sp) draw(); } else if (S.snapHint) { S.snapHint = null; draw(); }
   if (S.draft?.pts && !ptr) { S.draft.hover = [x, y]; draw(); }
   if (!ptr) return;
   if (Math.hypot(sx - ptr.sx, sy - ptr.sy) > 4) ptr.moved = true;
@@ -1281,9 +1378,11 @@ function onUp(e) {
   if (S.tool === "stamp") { commit(); P().markups.push({ id: uid(), page: pg.id, type: "stamp", box: [x, y, x, y], text: S.markStyle.stamp, color: S.markStyle.color, at: Date.now() }); changed(); return; }
   if (S.tool === "area" && S.fillMatch && !S.draft) return fillMatch(x, y);
   if (S.tool === "area" && S.roomFill && !S.draft) return roomFill(x, y);
-  if (["measure", "area", "scale", "circuit", "zone"].includes(S.tool)) {
+  if (["measure", "area", "scale", "circuit", "zone", "dim"].includes(S.tool)) {
     if (!S.draft) S.draft = { kind: S.tool, pts: [], snaps: [] };
-    if (S.tool === "circuit") { const tol = 14 / S.zoom; let best = null, bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; best = m; } } if (best) { x = best.x; y = best.y; } S.draft.snaps.push(!!best); }
+    let tick = null;
+    if (S.tool === "circuit") { const tol = 14 / S.zoom; let bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; tick = m; } } if (tick) { x = tick.x; y = tick.y; } S.draft.snaps.push(!!tick); }
+    if (!tick && SNAP && !e.altKey) { const sp = snapAt(pg, x, y); if (sp) { x = sp.x; y = sp.y; } }
     const last = S.draft.pts[S.draft.pts.length - 1];
     if (last && Math.hypot(last[0] - x, last[1] - y) * S.zoom < 4) return; // dblclick second click
     let q = [x, y]; if (e.shiftKey && last) { if (Math.abs(x - last[0]) > Math.abs(y - last[1])) q = [x, last[1]]; else q = [last[0], y]; }
@@ -1291,6 +1390,7 @@ function onUp(e) {
     if (S.tool === "area" && S.areaCircle && S.draft.pts.length === 2) { S.draft.pts = circlePts(S.draft.pts[0], S.draft.pts[1]); return finishDraft(); }
     if (S.tool === "measure" && S.runArc && S.draft.pts.length === 3) { S.draft.pts = arcPts(S.draft.pts[0], S.draft.pts[1], S.draft.pts[2]); return finishDraft(); }
     if (S.tool === "scale" && S.draft.pts.length === 2) calibrate(S.draft.pts);
+    if (S.tool === "dim" && S.draft.pts.length === 2) return finishDraft();
   }
 }
 function finishDraft() {
@@ -1312,6 +1412,7 @@ function finishDraft() {
     const L = runLen(P().runs[P().runs.length - 1], pg); toast(`Circuit ${n}: ${devices} device${devices === 1 ? "" : "s"}, ${L == null ? "set the sheet scale to get the length" : lenTxt(L) + " of wire including drops and waste"}.`);
   } else if (d.kind === "area" && d.pts.length >= 3) { const ai = itemOf(S.areaItem); commit(); P().markups.push({ id: uid(), page: pg.id, type: "area", pts: d.pts, color: ai ? ai.color : S.markStyle.color, item: ai ? ai.id : undefined, deduct: ai && S.areaDeduct ? true : undefined, at: Date.now() }); S.draft = null; changed(); if (ai && !pg.scale) toast("Area saved. Set this sheet's scale to get its size."); }
   else if (d.kind === "zone" && d.pts.length >= 3) finishZone(d.pts);
+  else if (d.kind === "dim" && d.pts.length >= 2) { commit(); P().markups.push({ id: uid(), page: pg.id, type: "dim", pts: d.pts.slice(0, 2), color: S.markStyle.color, at: Date.now() }); S.draft = null; changed(); if (!pg.scale) toast("Dimension saved. Set this sheet's scale to show its length."); }
   else { S.draft = null; draw(); }
 }
 S.txt = {};
@@ -1749,9 +1850,9 @@ function setDiff(a, b) {
 }
 function renderMarkups() {
   const el = $("#pane-markups"), mks = P().markups;
-  const nm = { cloud: "Revision cloud", text: "Text note", arrow: "Arrow", rect: "Box", highlight: "Highlight", stamp: "Stamp", area: "Area", zone: "Zone", callout: "Callout", photo: "Site photo" };
+  const nm = { cloud: "Revision cloud", text: "Text note", arrow: "Arrow", dim: "Dimension", rect: "Box", highlight: "Highlight", stamp: "Stamp", area: "Area", zone: "Zone", callout: "Callout", photo: "Site photo" };
   el.innerHTML = `<div class="row" style="justify-content:space-between"><b class="eyebrow">Markups list</b><span class="chip">${mks.length}</span></div>` +
-    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "zone" ? (mk.name || "") : mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) + " · perimeter " + lenTxt(realLen([...mk.pts, mk.pts[0]], pg)) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
+    (mks.length ? mks.map(mk => { const pg = P().pages.find(g => g.id === mk.page); const detail = mk.type === "zone" ? (mk.name || "") : mk.type === "dim" ? dimTxt(realLen(mk.pts, pg)) : mk.type === "area" ? areaTxt(polyArea(mk.pts), pg) + " · perimeter " + lenTxt(realLen([...mk.pts, mk.pts[0]], pg)) : (mk.text || ""); return `<div class="mk-row" data-mk="${mk.id}" style="${S.sel?.id === mk.id ? "background:var(--blue-soft)" : ""}"><span class="dot" style="background:${mk.color}"></span><span style="min-width:0"><b style="font-weight:600">${nm[mk.type]}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted" style="font-size:12px">${esc(detail).slice(0, 80)}</span></span><button class="btn ghost sm" data-delmk="${mk.id}" title="Delete markup">${svgI("trash", 16)}</button></div>`; }).join("")
       : `<p class="muted" style="margin:0;line-height:1.55">Clouds, notes, arrows, boxes, highlights, stamps and areas you draw show up here. They print on the marked-up drawings export.</p>`) +
     `<div class="cat"><div class="cat-h"><b>Runs</b></div>${P().runs.length ? P().runs.map(r => { const it = itemOf(r.item), pg = P().pages.find(g => g.id === r.page); return `<div class="mk-row" data-run="${r.id}"><span class="dot" style="background:${it?.color}"></span><span><b style="font-weight:600">${esc(it?.name || "Run")}</b> <span class="muted">· ${esc(pg?.name || "")}</span><br><span class="muted num" style="font-size:12px">${lenTxt(runLen(r, pg))} · ${bends(r.pts)} bends · ${r.drops || 0} drops</span></span><button class="btn ghost sm" data-editrun="${r.id}">Edit</button></div>`; }).join("") : `<p class="muted" style="margin:6px 0">No runs yet. Use <b>Run</b> to trace conduit or cable.</p>`}</div>`;
 }
@@ -3577,6 +3678,7 @@ async function buildJoin(j) {
     const place = async (g, m, keepPt) => { // m: sheet points -> first-sheet points
       const doc = docOf(g), bytes = await getFileBytes(doc); if (!bytes) throw new Error("missing-file");
       let base, draw;
+      if (doc.kind === "pdf" && (await getPdf(doc), S.pdfLocked[doc.id])) throw new Error("Sheets from a password-protected set can't be joined yet.");
       if (doc.kind === "pdf") { const src = await L.PDFDocument.load(bytes, { ignoreEncryption: true }); const [emb] = await out.embedPages([src.getPage(g.index)]); const pdf = await getPdf(doc), vp = (await pdf.getPage(g.index + 1)).getViewport({ scale: 1 }); const mb = src.getPage(g.index).getMediaBox();
         base = mulM(vp.transform, [1, 0, 0, 1, mb.x, mb.y]); draw = () => op.drawPage(emb, { x: 0, y: 0 }); }
       else { const im = /png/i.test(doc.mime || "") ? await out.embedPng(bytes) : await out.embedJpg(bytes); base = [g.w, 0, 0, -g.h, 0, g.h]; draw = () => op.drawImage(im, { x: 0, y: 0, width: 1, height: 1 }); }
@@ -3636,9 +3738,9 @@ function menuDefs() {
       ["Compare two sheets…", needJob(compareSheets), ""], ["Adds and omits report…", needJob(addsOmits), ""], ["Copy to other sheets…", needJob(copyToSheets), ""],
       ["Join sheets at a match line…", needJob(joinSheets), ""], ["Scan a paper drawing…", () => scanDrawing(), ""]]],
     ["Takeoff", [
-      ["Count", tool("count"), "C"], ["Read a legend", tool("legend"), "L"], ["Run (conduit, pipe, duct)", tool("measure"), "M"], ["Circuit", tool("circuit"), "U"], ["Area", tool("area"), "A"], ["Zone", tool("zone"), "Z"], ["Ignore an area", tool("exclude"), "X"], "-",
+      ["Count", tool("count"), "C"], ["Read a legend", tool("legend"), "L"], ["Run (conduit, pipe, duct)", tool("measure"), "M"], ["Circuit", tool("circuit"), "U"], ["Area", tool("area"), "A"], ["Zone", tool("zone"), "Z"], ["Ignore an area", tool("exclude"), "X"], ["Snap to the drawing on/off", () => setSnap(!SNAP), "N"], "-",
       ["Add an item…", needJob(() => addManualItem()), ""], ["Import assemblies (CSV)…", needJob(importAssemblies), ""], ["Check for gaps…", needJob(showBidGaps), ""]]],
-    ["Markup", [["Cloud", tool("cloud"), "K"], ["Text", tool("text"), "T"], ["Callout", tool("callout"), "Q"], ["Arrow", tool("arrow"), "W"], ["Box", tool("rect"), "B"], ["Highlight", tool("highlight"), "I"], ["Stamp", tool("stamp"), "P"], ["Site photo", tool("photo"), "O"]]],
+    ["Markup", [["Cloud", tool("cloud"), "K"], ["Text", tool("text"), "T"], ["Callout", tool("callout"), "Q"], ["Arrow", tool("arrow"), "W"], ["Dimension", tool("dim"), "D"], ["Box", tool("rect"), "B"], ["Highlight", tool("highlight"), "I"], ["Stamp", tool("stamp"), "P"], ["Site photo", tool("photo"), "O"]]],
     ["Quote", [
       ["Open the quote", needJob(() => switchTab("quote")), ""], ["Draft scope with AI", needJob(() => { switchTab("quote"); draftScope(); }), ""], ["Read a supplier quote PDF…", needJob(readSupplierQuote), ""],
       ["Quick quote (type or talk)…", needJob(quickQuote), ""], ["Compare saved versions…", needJob(compareCopies), ""], "-", ["Export the quote (PDF)", needJob(() => runExport("qpdf")), ""], ["Export the quote (Word)", needJob(() => runExport("qdocx")), ""]]],
@@ -3699,8 +3801,8 @@ const HELP = [
   ["phone", "Using the phone app", "Pinch to zoom, panels, camera, sharing drawings in.", `<p>Pinch to zoom; tap <b>Sheets</b> and <b>Panel</b> at the top to open the side panels. The camera works for site photos, scanning paper drawings and receipts. Share PDFs from email into the app to start a job.</p>`],
   ["trouble", "Fixing problems", "Missing drawings, slow sheets, AI errors, lost work.", `<ul><li><b>"Re-add this drawing"</b>: the file isn't on this computer yet. Choose the same file and every count comes back.</li><li><b>Slow on big sets:</b> thumbnails load as you scroll; hide panels with <kbd>F</kbd> for more room.</li><li><b>AI errors:</b> check your key and credit with your AI provider.</li><li><b>Deleted a job?</b> It stays in the <b>Recycle bin</b> for 30 days.</li><li><b>Something changed by mistake:</b> <kbd>Ctrl+Z</kbd> undoes.</li></ul>`],
 ];
-const KEYS = [["V", "Select"], ["H or Space+drag", "Pan"], ["C", "Count"], ["L", "Legend"], ["M", "Run"], ["U", "Circuit"], ["A", "Area"], ["Z", "Zone"], ["S", "Scale"], ["X", "Ignore an area"], ["K / T / Q / W / B / I / P / O", "Cloud, Text, Callout, Arrow, Box, Highlight, Stamp, Photo"], ["Enter / double-click", "Finish a run or area"], ["Esc", "Cancel"], ["Delete", "Delete selected"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+F", "Find text on drawings"], ["Ctrl+K", "Find a command"], ["F1", "Help centre"], ["+ / − / 0", "Zoom in, out, fit"], ["PgUp / PgDn", "Previous / next sheet"], ["[ / ] / F", "Sheets panel, right panel, both"]];
-const NEWS = [["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
+const KEYS = [["V", "Select"], ["H or Space+drag", "Pan"], ["C", "Count"], ["L", "Legend"], ["M", "Run"], ["U", "Circuit"], ["A", "Area"], ["Z", "Zone"], ["S", "Scale"], ["X", "Ignore an area"], ["K / T / Q / W / D / B / I / P / O", "Cloud, Text, Callout, Arrow, Dimension, Box, Highlight, Stamp, Photo"], ["N", "Snap to the drawing on or off"], ["Alt+click", "Place one point without snapping"], ["Enter / double-click", "Finish a run or area"], ["Esc", "Cancel"], ["Delete", "Delete selected"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+F", "Find text on drawings"], ["Ctrl+K", "Find a command"], ["F1", "Help centre"], ["+ / − / 0", "Zoom in, out, fit"], ["PgUp / PgDn", "Previous / next sheet"], ["[ / ] / F", "Sheets panel, right panel, both"]];
+const NEWS = [["4.18", "Snap: runs, areas, scale and dimensions lock to line ends, corners and walls on the drawing (N turns it off, Alt places a point freely). New Dimension markup shows a scaled length on the sheet. Password-protected drawing sets now open: enter the password once."], ["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
 let VIDEOS = null;
 async function loadVideos() { if (VIDEOS) return VIDEOS; try { const r = await fetch(VIDEO_URL, { cache: "no-cache" }); VIDEOS = r.ok ? ((await r.json()).videos || []) : []; } catch (e) { VIDEOS = null; return null; } return VIDEOS; }
 function openHelp(section = null, query = "") {
@@ -3781,6 +3883,7 @@ function bind() {
     if (e.target.id === "roomGap") S.roomGap = clamp(+e.target.value || 4, 1, 40);
     if (e.target.id === "circSel") { S.areaCircle = e.target.checked; S.draft = null; updHint(); }
     if (e.target.id === "arcSel") { S.runArc = e.target.checked; S.draft = null; updHint(); }
+    if (e.target.id === "snapSel") setSnap(e.target.checked);
     if (e.target.id === "tickSel") { P().tick = +e.target.value; markDirty(); draw(); }
     if (e.target.id === "areaSel") { if (e.target.value === "__newA") { addManualItem("area"); } else S.areaItem = e.target.value || null; }
   };
@@ -3864,6 +3967,7 @@ function bind() {
     if (k === "pagedown") return openPage(S.pageIdx + 1); if (k === "pageup") return openPage(S.pageIdx - 1);
     if (k === "[") return togglePane("rail"); if (k === "]") return togglePane("side");
     if (k === "f") { const on = PANES.rail || PANES.side; togglePane("rail", !on); togglePane("side", !on); return; }
+    if (k === "n") { setSnap(!SNAP); toast(SNAP ? "Snap on: points lock to line ends and corners." : "Snap off."); return; }
     const t = TOOLS.find(t => t !== "|" && t[2].toLowerCase() === k); if (t) setTool(t[0]);
   });
   window.addEventListener("keyup", (e) => { if (e.key === " ") spaceDown = false; });
