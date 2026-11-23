@@ -1,3 +1,4 @@
 { "videos": [
+  { "id": "start-a-job", "title": "Start a job and add drawings", "summary": "Open your drawing files, rename the job and add an addendum later. Everything saves as you go.", "topic": "start", "src": "videos/start-a-job.mp4", "poster": "videos/start-a-job.jpg", "seconds": 45, "added": "2026-11-23", "by": "screen" },
   { "id": "join-sheets", "title": "Join sheets at a match line", "summary": "Line up a floor split over two sheets so runs that cross the line count once.", "topic": "drawings", "src": "videos/join-sheets.mp4", "poster": "videos/join-sheets.jpg", "seconds": 38, "added": "2026-11-22", "by": "screen" }
 ] }
