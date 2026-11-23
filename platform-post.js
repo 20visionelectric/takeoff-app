@@ -56,7 +56,7 @@
   var entitled = false, storeReady = false;
   function cachedEntitled() { try { var v = JSON.parse(localStorage.getItem(ENT_KEY) || "null"); return !!(v && v.ok && Date.now() - v.at < GRACE_MS); } catch (e) { return false; } }
   function setEntitled(ok) { entitled = ok; try { localStorage.setItem(ENT_KEY, JSON.stringify({ ok: ok, at: Date.now() })); } catch (e) { } renderPlan(); }
-  function needsPlan() { return T.isNative() && !entitled && !cachedEntitled() && !codeOk(); }
+  function needsPlan() { return T.isNative() && !entitled && !cachedEntitled() && !codeOk() && !T.trialOk(); }
   function store() { return window.CdvPurchase && window.CdvPurchase.store; }
   function refreshOwned() { var s = store(); if (!s) return; var p = s.get(PRODUCT, window.CdvPurchase.Platform.GOOGLE_PLAY); setEntitled(!!(p && p.owned)); }
   function initBilling() {
@@ -77,6 +77,8 @@
     return (trial ? "Free trial, then " : "") + (paid ? paid.price + " / month" : "");
   }
   function showPaywall(reason) {
+    if (T.trialExpired() && !reason) reason = "Your 30-day test has ended. Thanks for testing!";
+    else if (T.trialExpired()) reason = "Your 30-day test has ended. " + reason;
     openDialog('<div class="dlg-h"><h3>Start your free trial</h3></div><div class="dlg-b">' +
       '<p style="margin:0;line-height:1.55">' + (reason || "Your own jobs need a subscription.") + ' The tutorial and practice drawing stay free.</p>' +
       '<ul style="margin:0;padding-left:18px;line-height:1.7"><li>Count symbols on every sheet, read legends, trace conduit runs</li><li>Markups, revision compare and adds/omits</li><li>Quote and itemized takeoff to Word, PDF and Excel</li><li>Cancel any time in Google Play</li></ul>' +
@@ -91,10 +93,10 @@
       var err = await o.order(); if (err && err.message) msg.textContent = err.message;
       setTimeout(function () { refreshOwned(); if (entitled) { closeDialog(); toast("Subscription active. Thank you!"); } }, 1500);
     };
-    document.getElementById("pwCodeGo").onclick = function () { var v = document.getElementById("pwCode").value.trim().toUpperCase(); if (CODES[v]) { try { localStorage.setItem(CODE_KEY, v); } catch (e) { } closeDialog(); renderPlan(); toast("Access code accepted. All features unlocked."); } else document.getElementById("pwMsg").textContent = "That code isn't valid."; };
+    document.getElementById("pwCodeGo").onclick = async function () { var v = document.getElementById("pwCode").value.trim().toUpperCase(); var tr = await T.tryTrial(v); if (tr) { if (tr.ok) { closeDialog(); renderPlan(); toast(tr.msg + " All features unlocked."); } else document.getElementById("pwMsg").textContent = tr.msg; return; } if (CODES[v]) { try { localStorage.setItem(CODE_KEY, v); } catch (e) { } closeDialog(); renderPlan(); toast("Access code accepted. All features unlocked."); } else document.getElementById("pwMsg").textContent = "That code isn't valid."; };
     document.getElementById("pwRestore").onclick = async function () { var s = store(); if (!s) return; await s.restorePurchases(); refreshOwned(); document.getElementById("pwMsg").textContent = entitled ? "Subscription restored." : "No active subscription found for this Google account."; if (entitled) closeDialog(); };
   }
-  function renderPlan() { var el = document.getElementById("planChip"); if (!el) return; el.textContent = !T.isNative() ? "" : (entitled || cachedEntitled() ? "Subscribed" : codeOk() ? "Access code active" : "Free trial available"); el.hidden = !T.isNative(); }
+  function renderPlan() { var el = document.getElementById("planChip"); if (!el) return; el.textContent = !T.isNative() ? "" : (entitled || cachedEntitled() ? "Subscribed" : codeOk() ? "Access code active" : T.trialOk() ? "Test: " + T.trialDaysLeft() + " days left" : "Free trial available"); el.hidden = !T.isNative(); }
   // gate: own jobs need a subscription; the sample job is always free
   var baseAddFiles = window.addFiles;
   window.addFiles = function (files) { if (needsPlan()) return showPaywall("Adding your own drawings needs a subscription."); return baseAddFiles(files); };

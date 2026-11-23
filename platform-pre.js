@@ -98,7 +98,31 @@
     return { status: "saved" };
   }
 
-  window.TVPlatform = { isNative: isNative, getAiCfg: getAiCfg, setAiCfg: setAiCfg, makeSample: makeSample, saveBlob: saveBlob };
+
+  /* ---------------- 30-day tester codes ----------------
+     Each code unlocks the app for 30 days from the day it's first entered on that device.
+     Only SHA-256 hashes are kept here, so the codes can't be read from the app. Codes can't be started after the last date. */
+  var TRIAL_KEY = "tv-trial", TRIAL_DAYS = 30, TRIAL_LAST_START = Date.parse("2027-06-30T23:59:59");
+  var TRIALS = {"321f440e290946d3fa9e96cbd4d8e5068497b24932f6cf74ba1d3f4d3b770df7": "Tester 1", "f91afd5a00f2ee83de7a693a701d8baa68508641118069298a454e0d58ddc608": "Tester 2", "cdd4489de0418b4a99365221e2d81ec150a8bdb6ab380b963709c9c1eb5a2ae0": "Tester 3", "6c8670d583137df338c4c2eb3093507fd6d95ad497022a2a3d199e6bbae97a1d": "Tester 4", "9c1bc88d94bdd4df79b3739983443877786de2bd853af933fc359a3186344acb": "Tester 5"};
+  function readTrial() { try { return JSON.parse(localStorage.getItem(TRIAL_KEY) || "null"); } catch (e) { return null; } }
+  function trialEnds() { var t = readTrial(); return t && TRIALS[t.h] ? t.start + TRIAL_DAYS * 864e5 : 0; }
+  function trialOk() { return Date.now() < trialEnds(); }
+  function trialDaysLeft() { return Math.max(0, Math.ceil((trialEnds() - Date.now()) / 864e5)); }
+  function trialExpired() { var e = trialEnds(); return !!e && Date.now() >= e; }
+  async function hashCode(s) { var b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(s).trim().toUpperCase())); return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, "0"); }).join(""); }
+  // Returns { ok, msg } for a typed code. Starting the same code again keeps its first start date.
+  async function tryTrial(code) {
+    if (!/^TEST-/i.test(String(code).trim())) return null;
+    var h; try { h = await hashCode(code); } catch (e) { return { ok: false, msg: "This browser can't check codes. Try Chrome or Edge." }; }
+    if (!TRIALS[h]) return { ok: false, msg: "That test code isn't valid." };
+    var t = readTrial();
+    if (t && t.h === h) { return trialOk() ? { ok: true, msg: "Test access: " + trialDaysLeft() + " days left." } : { ok: false, msg: "This test code has ended (30 days)." }; }
+    if (Date.now() > TRIAL_LAST_START) return { ok: false, msg: "This test code can no longer be started." };
+    try { localStorage.setItem(TRIAL_KEY, JSON.stringify({ h: h, start: Date.now() })); } catch (e) { return { ok: false, msg: "Couldn't save the code on this device." }; }
+    return { ok: true, msg: "Test access started: 30 days." };
+  }
+
+  window.TVPlatform = { isNative: isNative, getAiCfg: getAiCfg, setAiCfg: setAiCfg, makeSample: makeSample, saveBlob: saveBlob, trialOk: trialOk, trialDaysLeft: trialDaysLeft, trialExpired: trialExpired, tryTrial: tryTrial };
   window.claude = {
     use: function (name) {
       if (name === "sample") return Promise.resolve(makeSample(getAiCfg()));

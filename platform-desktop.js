@@ -15,7 +15,8 @@
   function lic() { try { return JSON.parse(localStorage.getItem(LIC_KEY) || "null"); } catch (e) { return null; } }
   function setLic(v) { try { v ? localStorage.setItem(LIC_KEY, JSON.stringify(v)) : localStorage.removeItem(LIC_KEY); } catch (e) { } }
   function licOk() { var l = lic(); return !!(l && l.ok && Date.now() - (l.at || 0) < GRACE_MS); }
-  function unlocked() { return !!CODES[code()] || licOk(); }
+  function trial() { return window.TVPlatform && TVPlatform.trialOk && TVPlatform.trialOk(); }
+  function unlocked() { return !!CODES[code()] || licOk() || trial(); }
 
   async function lsCall(path, params) {
     var r = await fetch(LS + path, { method: "POST", headers: { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(params).toString() });
@@ -57,7 +58,7 @@
       '<p style="margin:0;line-height:1.55">' + (reason || "Your own jobs need a subscription.") + ' The tutorial and practice drawing stay free.</p>' +
       '<ul style="margin:0;padding-left:18px;line-height:1.7"><li>Count symbols on every sheet, read legends, trace conduit runs</li><li>Markups, revision compare and adds/omits</li><li>Quote and itemized takeoff to Word, PDF and Excel</li><li>CA$9.99 a month, or CA$99 a year (save 17%). Cancel any time. Use it on 2 computers.</li></ul>' +
       '<p class="muted" style="margin:0;font-size:13px">Already subscribed? Paste the licence key from your receipt email.</p>' +
-      '<div class="row"><input class="inp" id="dkCode" placeholder="Licence key" style="flex:1" autocomplete="off" spellcheck="false"><button class="btn" id="dkCodeGo">Unlock</button></div>' +
+      '<div class="row"><input class="inp" id="dkCode" placeholder="Licence key or test code" style="flex:1" autocomplete="off" spellcheck="false"><button class="btn" id="dkCodeGo">Unlock</button></div>' +
       '<p class="muted" id="dkMsg" style="margin:0;font-size:12.5px"></p></div>' +
       '<div class="dlg-f"><span class="muted" style="font-size:12.5px">Help: ' + SUPPORT + '</span><span class="spacer"></span><button class="btn" data-close>Not now</button>' +
       '<a class="btn primary" style="text-decoration:none" href="' + BUY_URL + '" target="_blank" rel="noopener">Subscribe</a></div>');
@@ -65,6 +66,8 @@
     go.onclick = async function () {
       var raw = document.getElementById("dkCode").value.trim(), msg = document.getElementById("dkMsg");
       if (!raw) { msg.textContent = "Paste your licence key first."; return; }
+      var tr = window.TVPlatform && TVPlatform.tryTrial ? await TVPlatform.tryTrial(raw) : null;
+      if (tr) { if (tr.ok) { closeDialog(); renderChip(); toast(tr.msg + " All features unlocked."); } else msg.textContent = tr.msg; return; }
       if (CODES[raw.toUpperCase()]) { try { localStorage.setItem(CODE_KEY, raw.toUpperCase()); } catch (e) { } closeDialog(); renderChip(); toast("Code accepted. All features unlocked."); return; }
       go.disabled = true; msg.textContent = "Checking your licence…";
       var r; try { r = await activateKey(raw); } catch (e) { r = { ok: false, msg: "No internet connection. Connect once to unlock, then the app works offline." }; }
@@ -76,7 +79,7 @@
   function manageDialog() {
     var l = lic();
     openDialog('<div class="dlg-h"><h3>Your subscription</h3></div><div class="dlg-b">' +
-      '<p style="margin:0;line-height:1.55">' + (CODES[code()] ? "This computer is unlocked with an access code." : "Your licence is active on this computer.") + '</p>' +
+      '<p style="margin:0;line-height:1.55">' + (CODES[code()] ? "This computer is unlocked with an access code." : licOk() ? "Your licence is active on this computer." : "Test access: " + TVPlatform.trialDaysLeft() + " days left. Subscribe any time to keep your jobs going after the test.") + '</p>' +
       '<p class="muted" style="margin:0;font-size:13px">Change your card, download receipts or cancel on your Lemon Squeezy order page.</p></div>' +
       '<div class="dlg-f">' + (l ? '<button class="btn danger" id="dkDeact">Remove from this computer</button>' : "") + '<span class="spacer"></span><button class="btn" data-close>Close</button>' +
       '<a class="btn primary" style="text-decoration:none" href="' + MANAGE_URL + '" target="_blank" rel="noopener">Manage subscription</a></div>');
@@ -84,14 +87,14 @@
   }
   function gate(fnName, reason) {
     var base = window[fnName]; if (typeof base !== "function") return;
-    window[fnName] = function () { if (!unlocked()) return showGate(reason); return base.apply(this, arguments); };
+    window[fnName] = function () { if (!unlocked()) return showGate(window.TVPlatform && TVPlatform.trialExpired && TVPlatform.trialExpired() ? "Your 30-day test has ended. Thanks for testing! Your jobs are still saved on this computer." : reason); return base.apply(this, arguments); };
   }
   gate("addFiles", "Adding your own drawings needs a subscription.");
   gate("startBlankJob", "Starting your own jobs needs a subscription.");
   gate("openProjectById", "Opening your jobs needs a subscription.");
   gate("newFromTemplate", "Starting your own jobs needs a subscription.");
 
-  function renderChip() { var el = document.getElementById("planChip"); if (!el) return; el.hidden = false; el.textContent = unlocked() ? "Subscribed" : "Not subscribed"; }
+  function renderChip() { var el = document.getElementById("planChip"); if (!el) return; el.hidden = false; el.textContent = (CODES[code()] || licOk()) ? "Subscribed" : trial() ? "Test: " + TVPlatform.trialDaysLeft() + " days left" : "Not subscribed"; }
 
   /* ---- Install button (Chrome / Edge) ---- */
   var deferred = null;
