@@ -401,7 +401,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.19.0", PDFJS_V = "4.10.38"; window.V = V;
+const V = "4.19.1", PDFJS_V = "4.10.38"; window.V = V;
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -949,6 +949,33 @@ function stopMatching() { stopFlag = true; if (matcher) { matcher.terminate(); m
 /* thr maps from sensitivity 1..10 */
 const thrOf = (sens) => clamp(0.9 - (sens - 1) * 0.035, 0.55, 0.9);
 
+/* A match that is one letter of a word or number (room names, tags like "STORAGE 106") is not a device:
+   skip it when another glyph of the same height sits right beside it on the same line. */
+function inTextWord(g, W, H, m) {
+  const x0 = Math.max(0, Math.floor(m.x - m.w * 2)), x1 = Math.min(W, Math.ceil(m.x + m.w * 2)), y0 = Math.max(0, Math.floor(m.y - m.h)), y1 = Math.min(H, Math.ceil(m.y + m.h));
+  const w = x1 - x0, h = y1 - y0; if (w < 4 || h < 4) return false;
+  const lab = new Int32Array(w * h), comps = [], st = [];
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    const k = j * w + i; if (lab[k] || g[(y0 + j) * W + x0 + i] >= 150) continue;
+    const c = { a: i, b: j, c: i, d: j, n: 0 }; comps.push(c); lab[k] = comps.length; st.push(k);
+    while (st.length) { const q = st.pop(), qx = q % w, qy = (q - qx) / w; c.n++; if (qx < c.a) c.a = qx; if (qx > c.c) c.c = qx; if (qy < c.b) c.b = qy; if (qy > c.d) c.d = qy;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const X = qx + dx, Y = qy + dy; if (X < 0 || Y < 0 || X >= w || Y >= h) continue; const t = Y * w + X; if (!lab[t] && g[(y0 + Y) * W + x0 + X] < 150) { lab[t] = comps.length; st.push(t); } } }
+    if (comps.length > 400) return false;
+  }
+  const cx = m.x - x0, cy = m.y - y0, qx = m.w * 0.25, qy = m.h * 0.25;
+  const hit = comps.filter(c => c.n > 3 && c.c >= cx - qx && c.a <= cx + qx && c.d >= cy - qy && c.b <= cy + qy);
+  if (!hit.length) return false;
+  // the glyph: the tallest component in the middle (an underline under an S is not part of it)
+  const G = hit.reduce((a, c) => (c.d - c.b) > (a.d - a.b) ? c : a); const gh = G.d - G.b + 1, gw = G.c - G.a + 1, gcy = (G.b + G.d) / 2;
+  if (gh < 5 || gw > gh * 1.8) return false;
+  return comps.some(c => {
+    if (c === G || c.n <= 3 || c.a === 0 || c.b === 0 || c.c === w - 1 || c.d === h - 1) return false; // cut off by the window: a wire or wall, not a letter
+    const ch = c.d - c.b + 1, cw = c.c - c.a + 1;
+    if (ch < gh * 0.78 || ch > gh * 1.3 || cw > gh * 1.5 || Math.abs((c.b + c.d) / 2 - gcy) > gh * 0.22) return false;
+    const gap = Math.max(c.a - G.c, G.a - c.c) - 1;
+    return gap >= -1 && gap <= gh * 0.45;
+  });
+}
 async function countItem(item, scopePages, { quiet = false } = {}) {
   if (scopePages.length > 1) scopePages = scopePages.filter(g => !g.joinedInto);
   const tps = item.templates || []; if (!tps.length) return { n: 0, maybe: 0 };
@@ -976,6 +1003,7 @@ async function countItem(item, scopePages, { quiet = false } = {}) {
           P().marks = P().marks.filter(o => !(o.page === pg.id && o.item !== item.id && o.src === "auto" && Math.hypot(o.x - x, o.y - y) < rad && (o.sf ?? o.s ?? 0) < mf));
           const rec = { id: uid(), item: item.id, page: pg.id, x, y, s: +m.s.toFixed(3), sf: +mf.toFixed(3), src: "auto", w: m.w / r.ppt, h: m.h / r.ppt };
           if (isNeg(rec, m.s)) continue;
+          if (inTextWord(g, r.canvas.width, r.canvas.height, m)) continue;
           if (m.s >= opts.thr) { P().marks.push(rec); existing.push(rec); added++; }
           else maybes.push(rec);
         }
@@ -3992,7 +4020,7 @@ const HELP = [
   ["trouble", "Fixing problems", "Missing drawings, slow sheets, AI errors, lost work.", `<ul><li><b>"Re-add this drawing"</b>: the file isn't on this computer yet. Choose the same file and every count comes back.</li><li><b>Slow on big sets:</b> thumbnails load as you scroll; hide panels with <kbd>F</kbd> for more room.</li><li><b>AI errors:</b> check your key and credit with your AI provider.</li><li><b>Deleted a job?</b> It stays in the <b>Recycle bin</b> for 30 days.</li><li><b>Something changed by mistake:</b> <kbd>Ctrl+Z</kbd> undoes.</li></ul>`],
 ];
 const KEYS = [["V", "Select"], ["H or Space+drag", "Pan"], ["C", "Count"], ["L", "Legend"], ["M", "Run"], ["U", "Circuit"], ["A", "Area"], ["Z", "Zone"], ["S", "Scale"], ["X", "Ignore an area"], ["K / T / Q / W / D / B / I / P / O", "Cloud, Text, Callout, Arrow, Dimension, Box, Highlight, Stamp, Photo"], ["N", "Snap to the drawing on or off"], ["Alt+click", "Place one point without snapping"], ["Enter / double-click", "Finish a run or area"], ["Esc", "Cancel"], ["Delete", "Delete selected"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+F", "Find text on drawings"], ["Ctrl+K", "Find a command"], ["F1", "Help centre"], ["+ / − / 0", "Zoom in, out, fit"], ["PgUp / PgDn", "Previous / next sheet"], ["[ / ] / F", "Sheets panel, right panel, both"]];
-const NEWS = [["4.19", "Automatic home runs: tick the counted devices, click the panel, and circuits are grouped, routed and measured for you. Compare supplier prices line by line and use the cheapest. Job spec: set wiring method, conductor, wire size and box type once, and assemblies follow."], ["4.18", "Snap: runs, areas, scale and dimensions lock to line ends, corners and walls on the drawing (N turns it off, Alt places a point freely). New Dimension markup shows a scaled length on the sheet. Password-protected drawing sets now open: enter the password once."], ["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
+const NEWS = [["4.19.1", "Counting no longer ticks letters and numbers in room names and tags (like the S in STORAGE or the 0 in 106) as devices."], ["4.19", "Automatic home runs: tick the counted devices, click the panel, and circuits are grouped, routed and measured for you. Compare supplier prices line by line and use the cheapest. Job spec: set wiring method, conductor, wire size and box type once, and assemblies follow."], ["4.18", "Snap: runs, areas, scale and dimensions lock to line ends, corners and walls on the drawing (N turns it off, Alt places a point freely). New Dimension markup shows a scaled length on the sheet. Password-protected drawing sets now open: enter the password once."], ["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
 let VIDEOS = null;
 async function loadVideos() { if (VIDEOS) return VIDEOS; try { const r = await fetch(VIDEO_URL, { cache: "no-cache" }); VIDEOS = r.ok ? ((await r.json()).videos || []) : []; } catch (e) { VIDEOS = null; return null; } return VIDEOS; }
 function openHelp(section = null, query = "") {
