@@ -401,7 +401,7 @@ body.simple .adv{display:none!important}
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script type="module">
-const V = "4.18.0", PDFJS_V = "4.10.38"; window.V = V;
+const V = "4.19.0", PDFJS_V = "4.10.38"; window.V = V;
 try{
   const lib = await import("./vendor/pdf.min.mjs");
   try{ globalThis.pdfjsWorker = await import("./vendor/pdf.worker.min.mjs"); }catch(e){ console.warn("pdf worker",e); }
@@ -1082,7 +1082,7 @@ function drawNow() {
   if (S.snapHint && SNAP_TOOLS.includes(S.tool)) drawSnap(g, S.snapHint, px);
   drawOverlayUI(g);
 }
-function runLen(r, pg) { const L = realLen(r.pts, pg); if (L == null) return null; return L * (1 + (r.extra ?? itemOf(r.item)?.waste ?? 0) / 100) + (r.drops || 0) * (r.dropLen || 0) * (P().units === "m" ? 1 : M_PER_FT); }
+function runLen(r, pg) { const L = realLen(r.pts, pg); if (L == null) return null; return L * (1 + (r.extra ?? itemOf(r.item)?.waste ?? 0) / 100) + ((r.drops || 0) * (r.dropLen || 0) + (r.panLen || 0)) * (P().units === "m" ? 1 : M_PER_FT); }
 function label(g, x, y, t, color, px) {
   g.font = `600 ${12 * px}px "IBM Plex Mono", monospace`; const w = g.measureText(t).width + 10 * px, h = 18 * px;
   g.fillStyle = "#fff"; g.strokeStyle = color; g.lineWidth = 1.2 * px; g.beginPath(); g.roundRect ? g.roundRect(x - w / 2, y - h / 2, w, h, 4 * px) : g.rect(x - w / 2, y - h / 2, w, h); g.fill(); g.stroke();
@@ -1282,7 +1282,7 @@ function fitToolbar() { const tb = $("#toolbar"); if (!tb) return; tb.classList.
 function renderToolbar() {
   $("#toolbar").innerHTML = TOOLS.map(t => t === "|" ? '<span class="tsep"></span>' : `<button class="tool ${S.tool === t[0] ? "on" : ""}" data-tool="${t[0]}" title="${t[1]} (${t[2]})">${svgI(t[0] === "measure" ? "measure" : t[0])}<span>${t[1]}</span></button>`).join(""); requestAnimationFrame(fitToolbar);
 }
-function setTool(t) { if (t !== "joinpick") S.join = null; S.tool = t; S.draft = null; closePop(); renderToolbar(); renderSubbar(); updHint(); draw(); cv().style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; }
+function setTool(t) { if (t !== "joinpick") S.join = null; if (S.autoHR) S.autoHR.pick = false; S.tool = t; S.draft = null; closePop(); renderToolbar(); renderSubbar(); updHint(); draw(); cv().style.cursor = t === "pan" ? "grab" : t === "select" ? "default" : "crosshair"; }
 function updHint() {
   const pg = page(); const h = $("#hint"); if (!pg) { h.hidden = true; return; } h.hidden = false;
   const noScale = !pg.scale ? ` <b style="color:var(--bad)">This sheet has no scale yet</b> — use <b>Scale</b>.` : "";
@@ -1293,7 +1293,7 @@ function updHint() {
     count: ai && ai.kind === "count" ? `Click to add a <b>${esc(ai.name)}</b> by hand. Click a tick to remove it. <b>Drag a box</b> around a new symbol to count it everywhere.` : `<b>Drag a box</b> tightly around one symbol. It gets named and counted on every sheet.`,
     legend: `<b>Drag a box around the legend.</b> Every symbol in it is read, named and counted.`,
     measure: `Click along the conduit or cable route. <b>Double-click</b> or Enter to finish, Esc to cancel.` + noScale,
-    circuit: `<b>Click the panel</b>, then click each device on the circuit (clicks snap to counted ticks). <b>Double-click</b> or Enter to finish. The wire is routed square to the walls, with a drop at every device.` + noScale,
+    circuit: `<b>Click the panel</b>, then click each device on the circuit (clicks snap to counted ticks). <b>Double-click</b> or Enter to finish (or use <b>Auto home runs…</b> to do a whole sheet). The wire is routed square to the walls, with a drop at every device.` + noScale,
     area: `Click the corners of the area. <b>Double-click</b> to finish.` + noScale,
     room: `<b>Click inside a room</b> and the walls around it become the area. Raise "Close gaps" if it leaks through a door.`,
     zone: `Click the corners of a zone (a unit, floor area or phase). <b>Double-click</b> to finish, then name it. Use the same name on every sheet.`,
@@ -1319,7 +1319,7 @@ function renderSubbar() {
   } else if (S.tool === "measure" || S.tool === "circuit") {
     const runs = P()?.items.filter(i => i.kind === "length") || [];
     if (!S.measureItem || !itemOf(S.measureItem)) S.measureItem = runs[0]?.id || null;
-    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "measure" ? `<label class="row" style="gap:4px;font-size:13px" title="Three clicks: start, a point on the curve, end"><input type="checkbox" id="arcSel" ${S.runArc ? "checked" : ""}> Arc</label>` : ""}${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span>` : ""}`;
+    h = `<span class="eyebrow">Run type</span><select class="inp" id="runSel" style="width:auto">${runs.map(r => `<option value="${r.id}" ${r.id === S.measureItem ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new">+ New run type…</option></select>${S.tool === "measure" ? `<label class="row" style="gap:4px;font-size:13px" title="Three clicks: start, a point on the curve, end"><input type="checkbox" id="arcSel" ${S.runArc ? "checked" : ""}> Arc</label>` : ""}${S.tool === "circuit" ? `<span class="eyebrow">Drop per device</span><input class="inp num" id="dropSel" type="number" min="0" step="0.5" style="width:70px" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"><span class="muted">${P().units}</span><button class="btn sm" id="autoHR" type="button" title="Pick the counted devices and click the panel; circuits are grouped and routed for you">Auto home runs…</button>` : ""}`;
   } else if (S.tool === "scale") {
     const pg = page(); h = `<span class="eyebrow">Sheet scale</span><select class="inp" id="scaleSel" style="width:auto"><option value="">Choose…</option>${SCALES.map((s, i) => `<option value="${i}" ${pg?.scale?.label === s.label ? "selected" : ""}>${s.label}</option>`).join("")}</select><button class="btn sm" id="scaleAll">Use on all sheets</button><button class="btn sm" id="scalePick">Use on chosen sheets…</button><select class="inp" id="unitsSel" style="width:auto"><option value="ft" ${P().units === "ft" ? "selected" : ""}>Feet</option><option value="m" ${P().units === "m" ? "selected" : ""}>Metres</option></select>`;
   } else if (["cloud", "text", "arrow", "rect", "highlight", "stamp", "area"].includes(S.tool)) {
@@ -1372,6 +1372,7 @@ function onUp(e) {
     if (kind === "callout") { S.draft = { kind: "callout", box: [x1, y1, x, y] }; draw(); return placeCallout([x1, y1, x, y], sx, sy); }
     commit(); P().markups.push({ id: uid(), page: pg.id, type: kind, box: [x1, y1, x, y], color: S.markStyle.color, at: Date.now(), by: "" }); changed(); return;
   }
+  if (S.autoHR?.pick && S.tool === "circuit") { if (!p.moved) autoHomeRunsAt(x, y); return; }
   if (S.tool === "joinpick") { if (!p.moved) joinClick(x, y); return; }
   if (S.tool === "text") return placeText(x, y, sx, sy);
   if (S.tool === "photo") return addPhoto(pg, x, y);
@@ -1877,11 +1878,12 @@ function renderQuote() {
    <details class="adv" ${S.condOpen ? "open" : ""} id="condBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job conditions${condPct(q) ? ` · +${condPct(q)}% labour` : ""}</summary>
     <p class="muted" style="margin:6px 0;font-size:12px">Tick what applies to this job. Each one adds labour time. The % are starting points: change them to match your crew.</p>
     ${CONDS.map(([k, l, v]) => `<div class="row" style="gap:6px"><label class="row" style="gap:6px;flex:1;min-width:0"><input type="checkbox" data-cond="${k}" ${(q.conds || {})[k] ? "checked" : ""}> ${l}</label><input class="inp" data-condv="${k}" type="number" step="1" value="${(q.condV || {})[k] ?? v}" style="width:64px" aria-label="${l} %"><span class="muted">%</span></div>`).join("")}</details>
+   ${specHtml(q)}
    <div class="grid2">${f("other", "Other costs $", "number", 'step="0.01"')}${f("otherLbl", "Other costs label")}</div>
    <div class="adv" style="display:contents"><div class="eyebrow">Supplier and sub quotes (lump sums)</div>
    <p class="muted" style="margin:0;font-size:12px">For packages priced as one number: lighting package, switchgear, fire alarm or a subcontractor.</p>
    ${(q.pkgs || []).map((x, i) => `<div class="row" style="gap:6px"><input class="inp" data-pkn="${i}" value="${esc(x.n || "")}" placeholder="Package (e.g. Lighting fixtures)" style="flex:2;min-width:0"><input class="inp" data-pkf="${i}" value="${esc(x.f || "")}" placeholder="Supplier" style="flex:1;min-width:0"><input class="inp" data-pkv="${i}" type="number" step="0.01" value="${x.v ?? ""}" placeholder="$" style="width:96px"><button class="btn ghost sm" data-pkdel="${i}" title="Remove">${svgI("trash", 15)}</button></div>`).join("")}
-   <div class="row"><button class="btn sm" id="pkAdd" type="button">+ Add supplier quote</button><button class="btn sm" id="pkRead" type="button" title="Drop in a supplier or sub quote PDF; the optional AI reads each line and price">Read a quote PDF</button>${(q.pkgs || []).length ? f("pkgMk", "Markup on quotes %", "number", 'step="0.5"') : ""}</div>
+   <div class="row"><button class="btn sm" id="pkAdd" type="button">+ Add supplier quote</button><button class="btn sm" id="pkRead" type="button" title="Drop in a supplier or sub quote PDF; the optional AI reads each line and price">Read a quote PDF</button><button class="btn sm" id="sqOpen" type="button" title="Put two or more suppliers' prices side by side and use the cheapest">Compare supplier prices${(q.sq || []).length ? " (" + q.sq.length + ")" : ""}</button>${(q.pkgs || []).length ? f("pkgMk", "Markup on quotes %", "number", 'step="0.5"') : ""}</div>
    <div class="eyebrow">Bid markups (internal, not shown to the client)</div>
    <div class="grid2">${f("contingency", "Contingency %", "number", 'step="0.5"')}${f("overhead", "Overhead %", "number", 'step="0.5"')}${f("profit", "Profit %", "number", 'step="0.5"')}${f("bond", "Bond %", "number", 'step="0.1"')}</div>
    </div><label class="row" style="gap:6px"><input type="checkbox" data-q="showUnitPrices" ${q.showUnitPrices ? "checked" : ""}> Show unit prices on the client quote</label>
@@ -2171,7 +2173,7 @@ function editItem(id) {
    <label class="field"><span>Notes</span><textarea class="inp" id="eNotes" rows="2">${esc(it.notes || "")}</textarea></label></div>
    <div class="dlg-f"><button class="btn danger" id="eDel">Delete item</button><button class="btn" id="eMove" type="button" title="Move this item's takeoff to another item, or swap the material">Move / swap</button><span class="spacer"></span><button class="btn" data-close>Cancel</button>${it.kind === "count" && it.templates?.length ? '<button class="btn" id="eSaveCount">Save & recount</button>' : ""}<button class="btn primary" id="eSave">Save</button></div>`);
   let asm = JSON.parse(JSON.stringify(it.asm || []));
-  const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><select class="inp adv" data-aw="${i}" style="width:92px;padding-left:4px" title="Only count this part when a job condition is ticked"><option value="">Always</option>${CONDS.map(([k, l]) => `<option value="${k}" ${m.w === k ? "selected" : ""}>If: ${esc(l)}</option>`).join("")}</select><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
+  const asmPaint = () => { $("#asmRows").innerHTML = asm.map((m, i) => `<div class="row" style="gap:6px;flex-wrap:nowrap"><input class="inp" style="flex:1;min-width:0" data-an="${i}" value="${esc(m.n || "")}" placeholder="Part"><input class="inp num" style="width:62px" data-aq="${i}" type="number" step="0.01" value="${m.q ?? 1}" title="Qty per ${esc(unitOf(it))}"><input class="inp" style="width:48px" data-au="${i}" value="${esc(m.u || "ea")}" title="Unit"><input class="inp num" style="width:78px" data-ac="${i}" type="number" step="0.01" value="${m.c ?? ""}" placeholder="$ each"><select class="inp adv" data-aw="${i}" style="width:92px;padding-left:4px" title="Only count this part when a job condition is ticked, or when it matches the job spec"><option value="">Always</option>${CONDS.map(([k, l]) => `<option value="${k}" ${m.w === k ? "selected" : ""}>If: ${esc(l)}</option>`).join("")}${specOpts(m)}</select><button class="btn ghost sm" data-adel="${i}" type="button" title="Remove part">${svgI("trash", 15)}</button></div>`).join(""); asmTot(); };
   const asmTot = () => { const t = asm.filter(partOn).reduce((a, m) => a + (+m.q || 0) * (+m.c || 0), 0); $("#asmTot").textContent = asm.length ? "Parts cost per " + unitOf(it) + ": " + money(t) : ""; };
   $("#asmRows").oninput = (e) => { const el = e.target, k = Object.keys(el.dataset)[0], i = +el.dataset[k]; if (!asm[i]) return; ({ an: () => asm[i].n = el.value, aq: () => asm[i].q = el.value === "" ? 0 : +el.value, au: () => asm[i].u = el.value, ac: () => asm[i].c = el.value === "" ? "" : +el.value, aw: () => asm[i].w = el.value || undefined })[k]?.(); asmTot(); };
   $("#asmRows").onchange = (e) => { if (e.target.dataset.aw != null) { asm[+e.target.dataset.aw].w = e.target.value || undefined; asmTot(); } };
@@ -3005,11 +3007,11 @@ function copyToSheets() {
 }
 
 /* Read a supplier or sub quote PDF with the optional AI and apply prices. */
-async function readSupplierQuote() {
-  if (!S.ai) return toast("Reading quotes uses the optional AI. Add your AI key in AI settings on the Jobs screen first.");
+async function readSupplierQuote(opt = {}) {
+  if (!S.ai) return toast("Reading quote PDFs uses the optional AI. Add your AI key in AI settings on the Jobs screen first, or add the supplier's Excel or CSV instead.");
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = "application/pdf";
-  inp.onchange = async () => {
-    const f = inp.files?.[0]; if (!f) return;
+  const go = async (f) => {
+    if (!f) return;
     busy(true, "Reading the quote", f.name);
     let text = "";
     try { await pdfReady; const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()), isEvalSupported: false }).promise;
@@ -3022,8 +3024,11 @@ async function readSupplierQuote() {
     busy(false);
     const lines = (j?.lines || []).filter(l => l && l.desc).map(l => ({ desc: String(l.desc), qty: +l.qty || null, unit: l.unit || "ea", price: l.price != null ? +l.price : (l.ext != null && +l.qty ? +l.ext / +l.qty : null), ext: l.ext != null ? +l.ext : null }));
     if (!lines.length) return toast("No price lines found in that quote.");
+    if (opt.compare) { sqSave(j.vendor || f.name.replace(/\.pdf$/i, ""), j.quoteNo || "", lines); return compareSuppliers(); }
     showQuoteLines(j.vendor || f.name.replace(/\.pdf$/i, ""), j.quoteNo || "", +j.total || lines.reduce((a, l) => a + (l.ext ?? (l.qty || 0) * (l.price || 0)), 0), lines);
   };
+  if (opt.file) return go(opt.file);
+  inp.onchange = () => go(inp.files?.[0]);
   inp.click();
 }
 function bestMatch(desc) {
@@ -3039,7 +3044,8 @@ function showQuoteLines(vendor, no, total, lines) {
    <p class="muted" style="margin:0;font-size:12.5px">Read by AI: check each line against the PDF. Match a line to an item on this job to use its unit price, or add the whole quote as one lump sum.</p>
    <div style="max-height:46vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Quote line</th><th class="r">Qty</th><th class="r">Unit $</th><th style="text-align:left">Use for</th></tr>${lines.map((l, i) => { const it = itemOf(pick[i]); const old = it ? priceOf(it) : null; return `<tr><td style="font-size:12.5px">${esc(l.desc)}</td><td class="r num">${l.qty ?? ""} <small class="muted">${esc(l.unit)}</small></td><td class="r num"><input class="inp num" data-qlp="${i}" type="number" step="0.01" value="${l.price ?? ""}" style="width:84px">${old != null ? `<div class="muted" style="font-size:11px">was ${money(old)}</div>` : ""}</td><td><select class="inp" data-qlm="${i}" style="min-width:130px">${opts(pick[i])}</select></td></tr>`; }).join("")}</table></div>
    <label class="row" style="gap:6px"><input type="checkbox" id="qlPB" checked> Also save matched prices to my price book</label></div>
-   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn" id="qlLump" type="button">Add as one lump sum (${money(total)})</button><button class="btn primary" id="qlOk">Use matched prices</button></div>`);
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn" id="qlCmp" type="button" title="Keep these prices to compare with other suppliers">Save for comparison</button><button class="btn" id="qlLump" type="button">Add as one lump sum (${money(total)})</button><button class="btn primary" id="qlOk">Use matched prices</button></div>`);
+  $("#qlCmp").onclick = () => { sqSave(vendor, no, lines); compareSuppliers(); };
   $("#qlLump").onclick = () => { if (P().locked) return lockGuard(); commit(); (P().quote.pkgs ||= []).push({ n: vendor + (no ? " #" + no : ""), f: vendor, v: Math.round(total * 100) / 100 }); closeDialog(); changed(); switchTab("quote"); toast("Added under Supplier and sub quotes on the Quote tab."); };
   $("#qlOk").onclick = () => {
     if (P().locked) return lockGuard(); commit(); let n = 0, pbn = 0, parts = 0; const now = Date.now();
@@ -3166,8 +3172,192 @@ function colsEditHtml(it) {
    <div class="row" style="gap:6px"><input class="inp" id="cfNew" placeholder="New column name" style="flex:1"><button class="btn sm" id="cfAdd" type="button">Add column</button></div></details>`;
 }
 
-/* Conditional parts: a part that only counts when a job condition is ticked. */
-const partOn = (m) => !m.w || !!(P()?.quote?.conds || {})[m.w];
+/* Conditional parts: a part that only counts when a job condition is ticked, or (sp:group:value) when it matches the job spec. */
+const SPECS = [["wm", "Wiring method", [["EMT", "EMT conduit"], ["MC", "MC cable"], ["PVC", "PVC conduit"], ["AC90", "AC90 (BX)"], ["NMD90", "NMD90"], ["Teck", "Teck cable"]], "EMT"], ["cond", "Conductor", [["Cu", "Copper"], ["Al", "Aluminum"]], "Cu"], ["wire", "Branch wire size", [["14", "#14"], ["12", "#12"], ["10", "#10"]], "12"], ["box", "Boxes", [["Metal", "Metal"], ["PVC", "PVC"]], "Metal"]];
+const specVal = (g) => (P()?.quote?.spec || {})[g] ?? SPECS.find(s => s[0] === g)?.[3];
+const specLbl = (w) => { const [, g, v] = String(w).split(":"); const s = SPECS.find(x => x[0] === g); return s ? s[1] + ": " + (s[2].find(o => o[0] === v)?.[1] || v) : w; };
+const partOn = (m) => !m.w || (String(m.w).startsWith("sp:") ? specVal(m.w.split(":")[1]) === m.w.split(":")[2] : !!(P()?.quote?.conds || {})[m.w]);
+const specOpts = (m) => SPECS.map(([g, l, opts]) => `<optgroup label="Job spec: ${esc(l)}">${opts.map(([v, n]) => `<option value="sp:${g}:${v}" ${m.w === `sp:${g}:${v}` ? "selected" : ""}>If ${esc(n)}</option>`).join("")}</optgroup>`).join("");
+/* Reads a part name and says which job-spec choice it belongs to, if it clearly names one. */
+const SPEC_RX = { wm: [["EMT", /\bEMT\b/i], ["MC", /\bMC\b|armou?red cable/i], ["AC90", /\bAC-?90\b|\bBX\b/i], ["NMD90", /\bNMD-?90\b|\bNMD\b|\bromex\b|\bloomex\b/i], ["Teck", /\bteck/i], ["PVC", /\bPVC\b|\bDB2\b/i]], cond: [["Al", /\balumin(i)?um\b|\balum\b|\bAL\b/], ["Cu", /\bcopper\b|\bCU\b/]], wire: [["14", /#\s?14\b|\b14\s?AWG\b/i], ["12", /#\s?12\b|\b12\s?AWG\b/i], ["10", /#\s?10\b|\b10\s?AWG\b/i]], box: [["PVC", /\b(PVC|plastic|nonmetallic|non-metallic)\b/i], ["Metal", /\b(metal|steel|octagon|4\s?(in|")?\s?(sq|square))\b/i]] };
+function specGuess(n) {
+  n = String(n || ""); const isBox = /\bbox(es)?\b/i.test(n), isWire = /\b(RW90|T90|TWH?|THHN|XHHW|wire|conductor)\b/i.test(n) && !/\b(cable|MC|AC90|NMD|teck)\b/i.test(n);
+  if (isBox) { for (const [v, rx] of SPEC_RX.box) if (rx.test(n)) return "sp:box:" + v; return null; }
+  for (const [v, rx] of SPEC_RX.wm) if (rx.test(n)) return "sp:wm:" + v;
+  if (isWire) { for (const [v, rx] of SPEC_RX.wire) if (rx.test(n)) return "sp:wire:" + v; for (const [v, rx] of SPEC_RX.cond) if (rx.test(n)) return "sp:cond:" + v; }
+  return null;
+}
+/* Swaps the spec word in a part name, e.g. "#12 RW90" to "#10 RW90", "EMT connector" to "MC connector". */
+function specRename(n, g, from, to) {
+  const s = SPECS.find(x => x[0] === g), canon = { wm: to, cond: to === "Al" ? "aluminum" : "copper", wire: to, box: to }[g];
+  if (g === "wire") return String(n).replace(/(#\s?)(14|12|10)\b/, "$1" + to).replace(/\b(14|12|10)(\s?AWG)\b/i, to + "$2");
+  const rx = (SPEC_RX[g].find(x => x[0] === from) || [])[1]; if (!rx) return n + " (" + (s[2].find(o => o[0] === to)?.[1] || to) + ")";
+  return String(n).replace(new RegExp(rx.source, rx.flags.includes("i") ? "i" : ""), canon);
+}
+function specTagParts() {
+  if (P().locked) return lockGuard(); commit(); let n = 0;
+  for (const it of P().items) for (const m of it.asm || []) { if (m.w) continue; const t = specGuess(m.n); if (t) { m.w = t; n++; } }
+  changed(); renderQuote(); toast(n ? `${n} part${n === 1 ? "" : "s"} tagged from their names. Each now counts only when it matches the job spec; check them in each item's materials list.` : "No part names clearly named a wiring method, conductor, wire size or box type. Tag parts by hand in an item's materials list (the If… column).");
+}
+/* After a spec change, add the missing matching part to any assembly that has a tagged part of that kind but none for the new choice. */
+function specFill(g) {
+  const want = specVal(g), added = [];
+  for (const it of P().items) {
+    const tagged = (it.asm || []).filter(m => String(m.w || "").startsWith("sp:" + g + ":")); if (!tagged.length || tagged.some(m => m.w === `sp:${g}:${want}`)) continue;
+    const seen = new Set();
+    for (const m of tagged) { const from = m.w.split(":")[2], base = String(m.n).replace(/\s+/g, " "); const nn = specRename(base, g, from, want); if (seen.has(pbKey(nn))) continue; seen.add(pbKey(nn)); const pb = PB[pbKey(nn)]; const np = { n: nn, q: m.q, u: m.u, c: pb?.price ?? "", w: `sp:${g}:${want}` }; it.asm.push(np); added.push({ it: it.name, n: nn, priced: np.c !== "" }); }
+  }
+  return added;
+}
+function setSpec(g, v) {
+  if (P().locked) return lockGuard(); commit(); (P().quote.spec ||= {})[g] = v; const added = specFill(g); changed(); renderQuote();
+  if (added.length) { const need = added.filter(a => !a.priced).length; openDialog(`<div class="dlg-h"><h3>Job spec: ${esc(specLbl(`sp:${g}:${v}`))}</h3><span class="chip">${added.length} part${added.length === 1 ? "" : "s"} added</span></div><div class="dlg-b"><p class="muted" style="margin:0;font-size:12.5px">These assemblies had no part for the new choice, so a matching part was added with the same quantity. ${need ? `<b>${need} need a price</b>: open the item and type the part cost, or update your price book.` : "Prices came from your price book."} Rename any part that doesn't read right.</p><div style="max-height:44vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Item</th><th style="text-align:left">New part</th><th class="r">Price</th></tr>${added.map(a => `<tr><td>${esc(a.it)}</td><td>${esc(a.n)}</td><td class="r">${a.priced ? "from price book" : '<b style="color:var(--bad)">needed</b>'}</td></tr>`).join("")}</table></div></div><div class="dlg-f"><button class="btn primary" data-close>OK</button></div>`); }
+  else toast("Job spec set. Assemblies now count the parts that match it.");
+}
+function specHtml(q) {
+  const tagged = P().items.reduce((a, it) => a + (it.asm || []).filter(m => String(m.w || "").startsWith("sp:")).length, 0), set = Object.keys(q.spec || {}).length;
+  return `<details class="adv" ${S.specOpen ? "open" : ""} id="specBox" style="border:1px solid var(--line);border-radius:8px;padding:8px 10px"><summary style="cursor:pointer;font-weight:600">Job spec${set ? " · " + SPECS.map(([g, , o]) => o.find(x => x[0] === specVal(g))?.[1]).join(", ") : ""}</summary>
+   <p class="muted" style="margin:6px 0;font-size:12px">Set the job's spec once. Assembly parts tagged with a spec choice only count when they match, so changing a setting updates the whole bid. ${tagged ? `${tagged} part${tagged === 1 ? " is" : "s are"} tagged.` : "No parts are tagged yet: use the button below, or pick an If… choice for a part in an item's materials list."}</p>
+   <div class="grid2">${SPECS.map(([g, l, opts]) => `<label class="field"><span>${esc(l)}</span><select class="inp" data-spec="${g}">${opts.map(([v, n]) => `<option value="${v}" ${specVal(g) === v ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>`).join("")}</div>
+   <div class="row"><button class="btn sm" id="specTag" type="button" title="Reads part names like EMT, MC, #12, aluminum or PVC box and tags them">Tag parts from their names</button></div></details>`;
+}
+
+/* Automatic home runs: pick the devices, click the panel; nearby devices are grouped into circuits and each is routed back to the panel. */
+function autoHomeRuns() {
+  const pg = page(); if (!pg) return toast("Open a sheet first.");
+  if (P().locked) return lockGuard();
+  const by = {}; for (const m of P().marks) if (m.page === pg.id) by[m.item] = (by[m.item] || 0) + 1;
+  const its = P().items.filter(i => by[i.id] && i.kind === "count");
+  if (!its.length) return toast("Count the devices on this sheet first (Count tool), then make the home runs.");
+  const a = S.autoHR || {}, runs = P().items.filter(i => i.kind === "length"), dflt = runs.find(r => /#\s?1[24]|wire|circuit/i.test(r.name))?.id || runs[0]?.id;
+  openDialog(`<div class="dlg-h"><h3>Automatic home runs</h3></div><div class="dlg-b">
+   <p class="muted" style="margin:0;font-size:12.5px">Tick the devices to wire on <b>${esc(pg.name || "this sheet")}</b> and set how many go on one circuit. Then click the panel on the drawing: the app groups nearby devices into circuits, routes each one square to the walls back to the panel and adds a drop at every device. Edit or delete any circuit afterwards like one you drew.</p>
+   <div style="max-height:30vh;overflow:auto;display:grid;gap:4px">${its.map(i => `<label class="row" style="gap:6px"><input type="checkbox" data-ahr="${i.id}" ${(a.items || []).includes(i.id) ? "checked" : ""}> ${esc(i.name)} <span class="muted">${by[i.id]} on this sheet</span></label>`).join("")}</div>
+   <div class="grid2"><label class="field"><span>Devices per circuit</span><input class="inp num" id="ahrMax" type="number" min="1" max="60" value="${a.max || 8}"></label><label class="field"><span>Wire</span><select class="inp" id="ahrRun">${runs.map(r => `<option value="${r.id}" ${r.id === (a.run || dflt) ? "selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="__new" ${runs.length ? "" : "selected"}>New: #12 wire (branch circuit)</option></select></label></div>
+   <div class="grid2"><label class="field"><span>Drop per device (${P().units})</span><input class="inp num" id="ahrDrop" type="number" min="0" step="0.5" value="${S.dropLen ?? (P().units === "m" ? 3 : 10)}"></label><label class="field"><span>Extra at the panel, per circuit (${P().units})</span><input class="inp num" id="ahrPan" type="number" min="0" step="0.5" value="${a.pan ?? (P().units === "m" ? 1.5 : 5)}"></label></div>
+   <label class="field"><span>Circuit names start with</span><input class="inp" id="ahrPfx" value="${esc(a.pfx || "Circuit")}" placeholder="e.g. LP-2"></label></div>
+   <div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="ahrGo">Next: click the panel</button></div>`);
+  $("#ahrGo").onclick = () => {
+    const items = $$("[data-ahr]").filter(c => c.checked).map(c => c.dataset.ahr); if (!items.length) return toast("Tick at least one device.");
+    let run = $("#ahrRun").value; if (run === "__new" || !itemOf(run)) { const it = newItem({ name: "#12 wire (branch circuit)", kind: "length", cat: "Conduit & wire" }); commit(); P().items.push(it); run = it.id; }
+    S.dropLen = +$("#ahrDrop").value || 0;
+    const o = { items, max: Math.max(1, +$("#ahrMax").value || 8), pan: +$("#ahrPan").value || 0, pfx: $("#ahrPfx").value.trim() || "Circuit", run };
+    closeDialog(); S.measureItem = run; setTool("circuit"); S.autoHR = { ...o, pick: true }; toast("Now click the panel on the drawing. Esc to cancel.", [["Cancel", () => { S.autoHR.pick = false; }]]);
+  };
+}
+function autoHomeRunsAt(x, y) {
+  const a = S.autoHR; a.pick = false; const pg = page(); if (!pg) return;
+  const tol = 14 / S.zoom; let bd = tol; for (const m of P().marks) { if (m.page !== pg.id) continue; const d = Math.hypot(m.x - x, m.y - y); if (d < bd) { bd = d; x = m.x; y = m.y; } }
+  const inEx = (m) => (pg.excl || []).some(e => m.x >= e[0] && m.x <= e[0] + e[2] && m.y >= e[1] && m.y <= e[1] + e[3]);
+  let left = P().marks.filter(m => m.page === pg.id && a.items.includes(m.item) && !inEx(m) && Math.hypot(m.x - x, m.y - y) > 1);
+  if (!left.length) return toast("No ticks of those devices on this sheet.");
+  const man = (p, q) => Math.abs(p.x - q.x) + Math.abs(p.y - q.y), P0 = { x, y }, groups = [];
+  while (left.length) { // start from the device farthest from the panel, then gather its nearest neighbours
+    let fi = 0; left.forEach((m, i) => { if (man(m, P0) > man(left[fi], P0)) fi = i; });
+    let cur = left.splice(fi, 1)[0]; const g = [cur];
+    while (g.length < a.max && left.length) { let bi = 0, bv = Infinity; left.forEach((m, i) => { const d = Math.min(...g.map(q => man(m, q))); if (d < bv) { bv = d; bi = i; } }); g.push(left.splice(bi, 1)[0]); }
+    groups.push(g);
+  }
+  const sq = (pts) => { const o = [pts[0]]; for (let i = 1; i < pts.length; i++) { const p = o[o.length - 1], b = pts[i]; if (Math.abs(p[0] - b[0]) > 0.5 && Math.abs(p[1] - b[1]) > 0.5) o.push([b[0], p[1]]); o.push(b); } return o; };
+  commit(); const old = P().runs.filter(r => r.circuit), byPfx = a.pfx === "Circuit" ? old.length : old.filter(r => String(r.circuit).startsWith(a.pfx + "-")).length; let k = byPfx, tot = 0, noScale = false;
+  groups.sort((g1, g2) => Math.min(...g1.map(m => man(m, P0))) - Math.min(...g2.map(m => man(m, P0))));
+  for (const g of groups) {
+    const rest = g.slice(), order = []; let at = P0; while (rest.length) { let bi = 0; rest.forEach((m, i) => { if (man(m, at) < man(rest[bi], at)) bi = i; }); at = rest.splice(bi, 1)[0]; order.push(at); }
+    k++; const r = { id: uid(), item: a.run, page: pg.id, pts: sq([[x, y], ...order.map(m => [m.x, m.y])]), drops: g.length, dropLen: S.dropLen ?? (P().units === "m" ? 3 : 10), panLen: a.pan || undefined, circuit: a.pfx === "Circuit" ? "Circuit " + k : a.pfx + "-" + k, homerun: true, auto: true };
+    P().runs.push(r); const L = runLen(r, pg); if (L == null) noScale = true; else tot += L;
+  }
+  changed(); renderSubbar();
+  toast(`${groups.length} circuit${groups.length === 1 ? "" : "s"} made for ${groups.reduce((s, g) => s + g.length, 0)} devices${noScale ? ". Set this sheet's scale to get the wire length." : `, ${lenTxt(tot)} of wire including drops and waste.`} Undo (Ctrl+Z) removes them all.`);
+}
+
+/* Compare supplier prices: keep each supplier's reply on the job and pick the best price line by line. */
+function sqTargets() {
+  const rows = takeoffRows(), t = {};
+  for (const r of rows) {
+    if (r.it.asm?.length && r.it.asm.some(m => m.c !== "" && m.c != null)) { for (const m of r.it.asm.filter(partOn)) { const k = "p:" + pbKey(m.n); if (!pbKey(m.n)) continue; const e = t[k] ||= { k, n: m.n, u: m.u || "ea", q: 0, now: m.c === "" ? null : +m.c }; e.q += (+m.q || 0) * r.q; } }
+    else { const k = "i:" + r.it.id; t[k] = { k, n: r.it.name, u: r.unit, q: r.q, now: r.price }; }
+  }
+  return Object.values(t).sort((a, b) => String(a.n).localeCompare(String(b.n)));
+}
+function sqMatch(desc, targets) {
+  const words = (s) => new Set(pbKey(s).split(" ").filter(w => w.length > 1)), d = words(desc); let best = null;
+  for (const t of targets) { if (pbKey(t.n) === pbKey(desc)) return t.k; const w = words(t.n); let hit = 0; for (const x of w) if (d.has(x)) hit++; const sc = w.size ? hit / w.size : 0; if (sc >= 0.6 && (!best || sc > best.sc)) best = { k: t.k, sc }; }
+  return best?.k || "";
+}
+function sqSave(vendor, no, lines) {
+  const tg = sqTargets(), q = P().quote; (q.sq ||= []);
+  const old = q.sq.findIndex(s => pbKey(s.vendor) === pbKey(vendor)); const rec = { id: uid(), vendor: vendor || "Supplier", no: no || "", at: Date.now(), lines: lines.filter(l => l.price != null && !isNaN(l.price)).map(l => ({ desc: l.desc, qty: l.qty ?? null, unit: l.unit || "", price: +l.price, to: sqMatch(l.desc, tg) })) };
+  if (old >= 0) q.sq[old] = rec; else q.sq.push(rec); markDirty(); return rec;
+}
+async function readXlsxRows(file) {
+  const zip = await JSZip.loadAsync(await file.arrayBuffer()), ss = [];
+  const sx = await zip.file("xl/sharedStrings.xml")?.async("string"); if (sx) { const d = new DOMParser().parseFromString(sx, "application/xml"); for (const si of d.getElementsByTagName("si")) ss.push([...si.getElementsByTagName("t")].map(t => t.textContent).join("")); }
+  const name = Object.keys(zip.files).filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort()[0]; if (!name) return [];
+  const d = new DOMParser().parseFromString(await zip.file(name).async("string"), "application/xml"), out = [];
+  const colN = (ref) => { const L = ref.replace(/\d+/g, ""); let n = 0; for (const ch of L) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  for (const row of d.getElementsByTagName("row")) { const r = []; for (const c of row.getElementsByTagName("c")) { const v = c.getElementsByTagName("v")[0]?.textContent ?? [...c.getElementsByTagName("t")].map(t => t.textContent).join(""), tp = c.getAttribute("t"); r[colN(c.getAttribute("r") || "A")] = tp === "s" ? ss[+v] : v; } out.push(r.map(x => x ?? "")); }
+  return out;
+}
+function sqFromTable(rows) {
+  const num = (v) => { const n = parseFloat(String(v).replace(/[$,\s]/g, "")); return isNaN(n) ? null : n; };
+  let h = rows.findIndex(r => r.some(c => /price|cost|\$/i.test(c)) && r.some(c => /material|desc|item|product/i.test(c)));
+  let ci = 0, cq = -1, cu = -1, cp = -1;
+  if (h >= 0) { const H = rows[h].map(c => String(c).toLowerCase()); ci = H.findIndex(c => /material|desc|item|product/.test(c)); cq = H.findIndex(c => /^qty|quantity/.test(c)); cu = H.findIndex(c => /^unit$|^uom|^u\/m/.test(c)); cp = H.findIndex(c => /your unit price|unit price|net|price|cost/.test(c)); }
+  else { h = -1; cp = rows.reduce((b, r) => b < 0 ? r.findIndex((c, i) => i > 0 && num(c) != null) : b, -1); }
+  return rows.slice(h + 1).filter(r => String(r[ci] || "").trim() && cp >= 0 && num(r[cp]) != null).map(r => ({ desc: String(r[ci]).trim(), qty: cq >= 0 ? num(r[cq]) : null, unit: cu >= 0 ? String(r[cu] || "") : "", price: num(r[cp]) }));
+}
+function sqAddFile() {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.csv,.txt,application/pdf";
+  inp.onchange = async () => {
+    const f = inp.files?.[0]; if (!f) return;
+    if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") return readSupplierQuote({ compare: true, file: f });
+    let rows = [];
+    try { if (/\.xlsx$/i.test(f.name)) rows = await readXlsxRows(f); else rows = (await f.text()).split(/\r?\n/).map(l => { const o = []; let cur = "", qt = false; for (const ch of l) { if (ch === '"') qt = !qt; else if (ch === "," && !qt) { o.push(cur); cur = ""; } else cur += ch; } o.push(cur); return o; }); }
+    catch (e) { return toast("Couldn't read that file. Save it as .xlsx or .csv and try again."); }
+    const lines = sqFromTable(rows); if (!lines.length) return toast("No priced lines found. The file needs a material column and a price column (the Supplier price request export has both).");
+    const guess = f.name.replace(/\.(xlsx|csv|txt)$/i, "").replace(/[-_]+/g, " ").replace(/\bprice request\b/i, "").trim();
+    openDialog(`<div class="dlg-h"><h3>Whose prices are these?</h3><span class="chip">${lines.length} priced lines</span></div><div class="dlg-b"><label class="field"><span>Supplier name</span><input class="inp" id="sqV" value="${esc(guess)}" placeholder="e.g. Nedco Mississauga"></label><label class="field"><span>Quote number (optional)</span><input class="inp" id="sqN"></label></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="sqOk">Add to the comparison</button></div>`);
+    $("#sqOk").onclick = () => { sqSave($("#sqV").value.trim() || "Supplier", $("#sqN").value.trim(), lines); compareSuppliers(); };
+  };
+  inp.click();
+}
+function compareSuppliers() {
+  if (!P()) return; const q = P().quote, sq = q.sq ||= [], tg = sqTargets(), byK = Object.fromEntries(tg.map(t => [t.k, t]));
+  const priceAt = (s, k) => { const l = s.lines.find(l => l.to === k); return l ? l.price : null; };
+  const rows = tg.filter(t => sq.some(s => priceAt(s, t.k) != null));
+  const cheap = (k) => { let b = -1, bv = Infinity; sq.forEach((s, i) => { const p = priceAt(s, k); if (p != null && p < bv) { bv = p; b = i; } }); return b; };
+  const pick = S.sqPick ||= {}; for (const t of rows) if (pick[t.k] == null || !sq[pick[t.k]] || priceAt(sq[pick[t.k]], t.k) == null) pick[t.k] = cheap(t.k);
+  const tot = sq.map(s => rows.reduce((a, t) => { const p = priceAt(s, t.k); return a + (p != null ? p * t.q : 0); }, 0)), cnt = sq.map(s => rows.filter(t => priceAt(s, t.k) != null).length);
+  const full = sq.map((s, i) => cnt[i] === rows.length ? i : -1).filter(i => i >= 0), bestAll = full.sort((a, b) => tot[a] - tot[b])[0];
+  const chosen = rows.reduce((a, t) => { const i = pick[t.k]; return a + (i >= 0 ? priceAt(sq[i], t.k) * t.q : 0); }, 0);
+  const unm = sq.flatMap((s, si) => s.lines.map((l, li) => ({ s, si, l, li })).filter(x => !x.l.to || !byK[x.l.to]));
+  const opt = (sel) => `<option value="">Not on this job</option>${tg.map(t => `<option value="${t.k}" ${sel === t.k ? "selected" : ""}>${esc(t.n)}</option>`).join("")}`;
+  openDialog(`<div class="dlg-h"><h3>Compare supplier prices</h3><span class="chip">${sq.length} supplier${sq.length === 1 ? "" : "s"} · ${rows.length} of ${tg.length} lines priced</span></div><div class="dlg-b">
+   <p class="muted" style="margin:0;font-size:12.5px">Send the <b>Supplier price request</b> (Exports) to two or more suppliers, then add each reply here (their filled-in Excel, a CSV or a quote PDF). Cheapest price per line is <b style="color:var(--ok)">green</b>. Pick a price per line, then use them in the bid.</p>
+   <div class="row"><button class="btn sm" id="sqAdd" type="button">+ Add a supplier's reply</button><button class="btn sm" id="sqRfq" type="button">Make the price request (Excel)</button></div>
+   ${sq.length ? `<div style="max-height:46vh;overflow:auto"><table class="t"><tr><th style="text-align:left">Material</th><th class="r">Qty</th><th class="r">Now</th>${sq.map((s, i) => `<th class="r">${esc(s.vendor)}${s.no ? `<div class="muted" style="font-size:11px">#${esc(s.no)}</div>` : ""}<button class="btn ghost sm" data-sqdel="${i}" title="Remove this supplier">${svgI("trash", 13)}</button></th>`).join("")}</tr>
+    ${rows.map(t => { const c = cheap(t.k); return `<tr><td style="font-size:12.5px">${esc(t.n)}</td><td class="r num">${fmt(t.q)} <small class="muted">${esc(t.u)}</small></td><td class="r num muted">${t.now != null ? money(t.now) : "–"}</td>${sq.map((s, i) => { const p = priceAt(s, t.k); return `<td class="r num" style="${i === c ? "color:var(--ok);font-weight:700" : ""}">${p == null ? '<span class="muted">–</span>' : `<label class="row" style="gap:4px;justify-content:flex-end"><input type="radio" name="sq_${t.k}" data-sqk="${t.k}" value="${i}" ${pick[t.k] === i ? "checked" : ""}>${money(p)}</label>`}</td>`; }).join("")}</tr>`; }).join("")}
+    <tr><td><b>Total for these lines</b></td><td></td><td></td>${sq.map((s, i) => `<td class="r num"><b>${money(tot[i])}</b><div class="muted" style="font-size:11px">${cnt[i]} of ${rows.length} lines</div></td>`).join("")}</tr></table></div>
+    <p style="margin:0">Your picks: <b>${money(chosen)}</b>${bestAll != null && full.length > 0 ? ` · best single supplier for every line: <b>${esc(sq[bestAll].vendor)}</b> at ${money(tot[bestAll])}` : ""}</p>
+    ${unm.length ? `<details><summary style="cursor:pointer">Lines not matched to this job (${unm.length})</summary><div style="max-height:24vh;overflow:auto"><table class="t">${unm.map(x => `<tr><td style="font-size:12px">${esc(x.s.vendor)}</td><td style="font-size:12px">${esc(x.l.desc)}</td><td class="r num">${money(x.l.price)}</td><td><select class="inp" data-squ="${x.si}:${x.li}" style="min-width:140px">${opt(x.l.to)}</select></td></tr>`).join("")}</table></div></details>` : ""}
+    <label class="row" style="gap:6px"><input type="checkbox" id="sqPB" checked> Also save the chosen prices to my price book</label>` : `<p class="muted">No supplier replies yet.</p>`}
+  </div><div class="dlg-f"><button class="btn" data-close>Close</button>${sq.length ? `<button class="btn" id="sqCheap" type="button">Pick cheapest per line</button>${bestAll != null ? `<button class="btn" id="sqAll" type="button">Pick all from ${esc(sq[bestAll].vendor)}</button>` : ""}<button class="btn primary" id="sqUse">Use picked prices</button>` : ""}</div>`);
+  $("#sqAdd").onclick = sqAddFile; $("#sqRfq").onclick = () => runExport("rfq");
+  $$("[data-sqk]").forEach(r => r.onchange = () => { pick[r.dataset.sqk] = +r.value; compareSuppliers(); });
+  $$("[data-squ]").forEach(s => s.onchange = () => { const [si, li] = s.dataset.squ.split(":").map(Number); sq[si].lines[li].to = s.value; markDirty(); compareSuppliers(); });
+  $$("[data-sqdel]").forEach(b => b.onclick = () => { sq.splice(+b.dataset.sqdel, 1); S.sqPick = {}; markDirty(); compareSuppliers(); });
+  if ($("#sqCheap")) $("#sqCheap").onclick = () => { for (const t of rows) pick[t.k] = cheap(t.k); compareSuppliers(); };
+  if ($("#sqAll")) $("#sqAll").onclick = () => { for (const t of rows) pick[t.k] = bestAll; compareSuppliers(); };
+  if ($("#sqUse")) $("#sqUse").onclick = () => {
+    if (P().locked) return lockGuard(); commit(); const now = Date.now(), toPB = $("#sqPB").checked; let n = 0, parts = 0, pbn = 0;
+    for (const t of rows) { const i = pick[t.k]; if (!(i >= 0)) continue; const p = priceAt(sq[i], t.k); if (p == null) continue;
+      if (t.k.startsWith("i:")) { const it = itemOf(t.k.slice(2)); if (!it) continue; if (it.price !== p) it.priceAt = now; it.price = p; it.vendor = sq[i].vendor; n++; if (toPB) { pbRemember(it); pbn++; } }
+      else { const key = t.k.slice(2); let hit = false; for (const it of P().items) for (const m of it.asm || []) if (pbKey(m.n) === key) { m.c = p; hit = true; if (toPB) pbRemember(it); } if (hit) { parts++; if (toPB) { PB[key] = { ...(PB[key] || { name: t.n, asm: [] }), name: PB[key]?.name || t.n, price: p, at: now }; pbn++; } } }
+    }
+    if (pbn) pbSave(); closeDialog(); changed(); if (S.tab === "quote") renderQuote(); toast(`${n + parts} price${n + parts === 1 ? "" : "s"} updated from your picks (${money(chosen)} for these lines).${pbn ? " Saved to your price book." : ""}`);
+  };
+}
+
 
 /* Past-job benchmarks: how actual hours compared with the estimate on finished jobs. */
 S.bench = null;
@@ -3738,11 +3928,11 @@ function menuDefs() {
       ["Compare two sheets…", needJob(compareSheets), ""], ["Adds and omits report…", needJob(addsOmits), ""], ["Copy to other sheets…", needJob(copyToSheets), ""],
       ["Join sheets at a match line…", needJob(joinSheets), ""], ["Scan a paper drawing…", () => scanDrawing(), ""]]],
     ["Takeoff", [
-      ["Count", tool("count"), "C"], ["Read a legend", tool("legend"), "L"], ["Run (conduit, pipe, duct)", tool("measure"), "M"], ["Circuit", tool("circuit"), "U"], ["Area", tool("area"), "A"], ["Zone", tool("zone"), "Z"], ["Ignore an area", tool("exclude"), "X"], ["Snap to the drawing on/off", () => setSnap(!SNAP), "N"], "-",
+      ["Count", tool("count"), "C"], ["Read a legend", tool("legend"), "L"], ["Run (conduit, pipe, duct)", tool("measure"), "M"], ["Circuit", tool("circuit"), "U"], ["Automatic home runs…", needJob(() => { setTool("circuit"); autoHomeRuns(); }), ""], ["Area", tool("area"), "A"], ["Zone", tool("zone"), "Z"], ["Ignore an area", tool("exclude"), "X"], ["Snap to the drawing on/off", () => setSnap(!SNAP), "N"], "-",
       ["Add an item…", needJob(() => addManualItem()), ""], ["Import assemblies (CSV)…", needJob(importAssemblies), ""], ["Check for gaps…", needJob(showBidGaps), ""]]],
     ["Markup", [["Cloud", tool("cloud"), "K"], ["Text", tool("text"), "T"], ["Callout", tool("callout"), "Q"], ["Arrow", tool("arrow"), "W"], ["Dimension", tool("dim"), "D"], ["Box", tool("rect"), "B"], ["Highlight", tool("highlight"), "I"], ["Stamp", tool("stamp"), "P"], ["Site photo", tool("photo"), "O"]]],
     ["Quote", [
-      ["Open the quote", needJob(() => switchTab("quote")), ""], ["Draft scope with AI", needJob(() => { switchTab("quote"); draftScope(); }), ""], ["Read a supplier quote PDF…", needJob(readSupplierQuote), ""],
+      ["Open the quote", needJob(() => switchTab("quote")), ""], ["Draft scope with AI", needJob(() => { switchTab("quote"); draftScope(); }), ""], ["Read a supplier quote PDF…", needJob(() => readSupplierQuote()), ""], ["Compare supplier prices…", needJob(compareSuppliers), ""], ["Job spec…", needJob(() => { S.specOpen = true; switchTab("quote"); setTimeout(() => $("#specBox")?.scrollIntoView({ block: "center" }), 60); }), ""],
       ["Quick quote (type or talk)…", needJob(quickQuote), ""], ["Compare saved versions…", needJob(compareCopies), ""], "-", ["Export the quote (PDF)", needJob(() => runExport("qpdf")), ""], ["Export the quote (Word)", needJob(() => runExport("qdocx")), ""]]],
     ["Tools", [
       ["Ask AI", needJob(() => switchTab("ai")), ""], ["Ask about the whole drawing set…", needJob(askAboutSet), ""], ["Ask about a boxed area", needJob(() => setTool("aibox")), ""],
@@ -3794,15 +3984,15 @@ const HELP = [
   ["start", "Getting started", "Start a job, add drawings, set the scale, count, measure and send the quote.", `<ol><li><b>Start a job.</b> On the Jobs screen, drop your PDF drawing set on the page or press <b>Choose drawing files</b>. Every sheet opens in the Sheets panel on the left.</li><li><b>Set the scale</b> on each sheet (<kbd>S</kbd>). Pick the drawing scale from the list, or click both ends of a dimension you know and type its length. Use <b>Use on chosen sheets</b> to copy it.</li><li><b>Count.</b> With <b>Legend</b> (<kbd>L</kbd>), drag a box around the symbol legend and every symbol is read and counted on every sheet. Or use <b>Count</b> (<kbd>C</kbd>) and drag a tight box around one symbol.</li><li><b>Check the ticks.</b> Click to add a missed one; click a tick to remove it. Review possible matches in the Takeoff list.</li><li><b>Measure</b> runs (<kbd>M</kbd>) and areas (<kbd>A</kbd>).</li><li><b>Price and send.</b> Open the Quote tab, check labour and markup, then <b>Export</b> the quote to PDF or Word.</li></ol>`],
   ["drawings", "Drawings and sheets", "Add sets and addenda, open files from email, scan paper plans, join split floors.", `<p><b>Add drawings:</b> <b>+ Add</b> in the Sheets panel, or drag PDFs onto the drawing. Later files are grouped as addenda.</p><p><b>Open from email or Files:</b> on Android, tap a PDF and choose <b>Open with</b> 20 Vision Material Take Off, or use <b>Share</b> from Gmail, Outlook or Drive. On a computer with the app installed, right-click a PDF and choose <b>Open with</b>. You can add it to the open job or start a new one.</p><p><b>Scan a paper drawing:</b> Sheets panel → <b>Scan a paper drawing</b>. Take a photo, drag the four corners onto the paper, and keep <b>Clean up</b> on. Then set the scale with two points of a known dimension.</p><p><b>Join sheets at a match line:</b> when one floor is split over two sheets, choose <b>Join sheets at a match line</b>, then click the same two points on the match line on each sheet. The joined sheet takes the first sheet's scale, and the two originals are left out of "count on every sheet" so nothing counts twice.</p><p><b>Find text</b> (<kbd>Ctrl+F</kbd>) searches every sheet for a tag or note. <b>Sheet status</b> (Not started → Checked) shows what is left.</p>`],
   ["count", "Counting symbols", "Legend reading, template counts, possible matches and teaching the matcher.", `<p><b>Legend</b> (<kbd>L</kbd>): drag a box around the legend. Each symbol gets an item and is counted on every sheet.</p><p><b>Count</b> (<kbd>C</kbd>): drag a tight box around one symbol to count it everywhere. Click to add one by hand.</p><p><b>Possible matches</b> show with a confidence %. Review them least-sure-first; unticked ones are remembered as "not this" next time.</p><p><b>Ignore</b> (<kbd>X</kbd>) greys out title blocks, notes and legends so they aren't counted.</p><p><b>Count by text:</b> Find text → <b>Count these as an item</b> for devices drawn as tags (WP, GFI, EF-1).</p>`],
-  ["measure", "Runs, circuits and areas", "Conduit, pipe and duct runs, drops, fittings, areas, rooms and zones.", `<p><b>Run</b> (<kbd>M</kbd>): click along the route, double-click to finish. Hold Shift for straight lines. Tick <b>Arc</b> for curves.</p><p><b>Circuit</b> (<kbd>U</kbd>): click the panel, then each device; a drop is added at every device.</p><p><b>Fittings</b> can be counted from runs (bends, couplings, connectors).</p><p><b>Area</b> (<kbd>A</kbd>): click the corners. Options: one click per room, same fill colour, circle, and deductions.</p><p><b>Zone</b> (<kbd>Z</kbd>): name units or areas; the bid summary totals each zone across sheets.</p>`],
+  ["measure", "Runs, circuits and areas", "Conduit, pipe and duct runs, drops, fittings, areas, rooms and zones.", `<p><b>Run</b> (<kbd>M</kbd>): click along the route, double-click to finish. Hold Shift for straight lines. Tick <b>Arc</b> for curves.</p><p><b>Circuit</b> (<kbd>U</kbd>): click the panel, then each device; a drop is added at every device. <b>Auto home runs…</b> (in the Circuit bar): tick the counted devices, set devices per circuit, click the panel, and every circuit on the sheet is grouped, routed and measured.</p><p><b>Fittings</b> can be counted from runs (bends, couplings, connectors).</p><p><b>Area</b> (<kbd>A</kbd>): click the corners. Options: one click per room, same fill colour, circle, and deductions.</p><p><b>Zone</b> (<kbd>Z</kbd>): name units or areas; the bid summary totals each zone across sheets.</p>`],
   ["markup", "Markups and photos", "Clouds, text, callouts, stamps and site photos; marked-up PDF export.", `<p>The Markup tools (Cloud, Text, Callout, Arrow, Box, Highlight, Stamp) draw on the sheet and print on the <b>Marked-up drawings</b> PDF. <b>Site photo</b> (<kbd>O</kbd>) pins a photo to a spot.</p>`],
-  ["quote", "Pricing and the quote", "Price book, assemblies, labour, bid markups, alternates, change orders and exports.", `<p>Items take prices and labour units from the <b>Price book</b> (CSV import). Assemblies add their parts. The <b>Quote</b> tab has labour factor, job conditions, contingency, overhead, profit and bond, plus alternates, supplier quotes and change orders.</p><p><b>Check for gaps</b> finds items with no price or labour, unscaled sheets and unreviewed matches. <b>Lock</b> a bid when it goes out and save copies to compare later.</p><p><b>Export</b>: quote, takeoff, marked-up drawings, supplier price request, submittal, change order, handoff package and QuickBooks CSV.</p>`],
+  ["quote", "Pricing and the quote", "Price book, assemblies, labour, bid markups, alternates, change orders and exports.", `<p>Items take prices and labour units from the <b>Price book</b> (CSV import). Assemblies add their parts. The <b>Quote</b> tab has labour factor, job conditions, contingency, overhead, profit and bond, plus alternates, supplier quotes and change orders.</p><p><b>Compare supplier prices</b>: send the supplier price request to two or more suppliers, add each reply (Excel, CSV or PDF), and pick the cheapest price per line or the best single supplier. <b>Job spec</b>: set wiring method, conductor, wire size and box type once; assembly parts tagged with a spec choice count only when they match, and missing parts are added when you change a setting.</p><p><b>Check for gaps</b> finds items with no price or labour, unscaled sheets and unreviewed matches. <b>Lock</b> a bid when it goes out and save copies to compare later.</p><p><b>Export</b>: quote, takeoff, marked-up drawings, supplier price request, submittal, change order, handoff package and QuickBooks CSV.</p>`],
   ["ai", "Optional AI", "Use your own Claude or OpenAI key to ask about sheets, read schedules and quotes.", `<p>Counting, measuring and quoting work without AI. To use AI, add your own API key in <b>AI settings</b>; usage is billed by your AI provider.</p><p><b>Ask about the whole drawing set</b> (Tools menu, or the Ask AI tab) reads the text on every sheet and answers with links that jump to each sheet. Also: ask about a boxed area, read a panel schedule, check plans against a schedule, read a spec book, read supplier quote PDFs and quick quotes.</p>`],
   ["phone", "Using the phone app", "Pinch to zoom, panels, camera, sharing drawings in.", `<p>Pinch to zoom; tap <b>Sheets</b> and <b>Panel</b> at the top to open the side panels. The camera works for site photos, scanning paper drawings and receipts. Share PDFs from email into the app to start a job.</p>`],
   ["trouble", "Fixing problems", "Missing drawings, slow sheets, AI errors, lost work.", `<ul><li><b>"Re-add this drawing"</b>: the file isn't on this computer yet. Choose the same file and every count comes back.</li><li><b>Slow on big sets:</b> thumbnails load as you scroll; hide panels with <kbd>F</kbd> for more room.</li><li><b>AI errors:</b> check your key and credit with your AI provider.</li><li><b>Deleted a job?</b> It stays in the <b>Recycle bin</b> for 30 days.</li><li><b>Something changed by mistake:</b> <kbd>Ctrl+Z</kbd> undoes.</li></ul>`],
 ];
 const KEYS = [["V", "Select"], ["H or Space+drag", "Pan"], ["C", "Count"], ["L", "Legend"], ["M", "Run"], ["U", "Circuit"], ["A", "Area"], ["Z", "Zone"], ["S", "Scale"], ["X", "Ignore an area"], ["K / T / Q / W / D / B / I / P / O", "Cloud, Text, Callout, Arrow, Dimension, Box, Highlight, Stamp, Photo"], ["N", "Snap to the drawing on or off"], ["Alt+click", "Place one point without snapping"], ["Enter / double-click", "Finish a run or area"], ["Esc", "Cancel"], ["Delete", "Delete selected"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+F", "Find text on drawings"], ["Ctrl+K", "Find a command"], ["F1", "Help centre"], ["+ / − / 0", "Zoom in, out, fit"], ["PgUp / PgDn", "Previous / next sheet"], ["[ / ] / F", "Sheets panel, right panel, both"]];
-const NEWS = [["4.18", "Snap: runs, areas, scale and dimensions lock to line ends, corners and walls on the drawing (N turns it off, Alt places a point freely). New Dimension markup shows a scaled length on the sheet. Password-protected drawing sets now open: enter the password once."], ["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
+const NEWS = [["4.19", "Automatic home runs: tick the counted devices, click the panel, and circuits are grouped, routed and measured for you. Compare supplier prices line by line and use the cheapest. Job spec: set wiring method, conductor, wire size and box type once, and assemblies follow."], ["4.18", "Snap: runs, areas, scale and dimensions lock to line ends, corners and walls on the drawing (N turns it off, Alt places a point freely). New Dimension markup shows a scaled length on the sheet. Password-protected drawing sets now open: enter the password once."], ["4.17.1", "30-day test codes for people trying the app, and small fixes."], ["4.17", "Menu bar with every command, Find a command (Ctrl+K), a full help centre with how-to videos; open drawings from email or Files; scan a paper drawing; ask the AI about the whole set; join sheets at a match line."], ["4.16", "Wall types from tags, same-fill areas, panel schedules linked to circuits, faster big sets."], ["4.15", "Teach the matcher, one-click rooms, circles and arcs, plain-words reports, spec reader, receipts in job costing, photo quick quote."], ["4.14", "Grey drawings, bid tracker, handoff package, quick quote, plans vs schedule, voltage drop check."], ["4.13", "Zones, fittings from runs, split runs, sheet links, callouts, custom columns, conditional parts, past-job benchmarks."], ["4.12", "Read supplier quote PDFs, recycle bin, build order, assembly import, copy to other sheets."], ["4.11", "Count by text, sheet status, bulk edit, move and swap, price age, gap check, compare versions, QuickBooks CSV, simple mode."]];
 let VIDEOS = null;
 async function loadVideos() { if (VIDEOS) return VIDEOS; try { const r = await fetch(VIDEO_URL, { cache: "no-cache" }); VIDEOS = r.ok ? ((await r.json()).videos || []) : []; } catch (e) { VIDEOS = null; return null; } return VIDEOS; }
 function openHelp(section = null, query = "") {
@@ -3893,6 +4083,7 @@ function bind() {
     if (e.target.id === "scalePick") { if (!page()?.scale) return toast("Set this sheet's scale first, then copy it to other sheets."); const sc = page().scale;
       openDialog(`<div class="dlg-h"><h3>Use ${esc(sc.label)} on…</h3></div><div class="dlg-b"><p class="muted" style="margin:0">Sheets with no scale are ticked.</p><div style="max-height:50vh;overflow:auto;display:grid;gap:4px">${P().pages.map((g, i) => `<label class="row" style="gap:8px"><input type="checkbox" data-scp="${i}" ${!g.scale ? "checked" : ""}> <span style="flex:1">${esc(g.name)}</span><span class="muted" style="font-size:12px">${g.scale ? esc(g.scale.label) : "no scale"}</span></label>`).join("")}</div></div><div class="dlg-f"><button class="btn" data-close>Cancel</button><button class="btn primary" id="scpOk">Apply</button></div>`);
       $("#scpOk").onclick = () => { const pick = $$("[data-scp]").filter(c => c.checked).map(c => P().pages[+c.dataset.scp]); if (!pick.length) return closeDialog(); commit(); pick.forEach(g => g.scale = { ...sc }); closeDialog(); changed({ sheets: true }); toast(`Scale set on ${pick.length} sheet${pick.length > 1 ? "s" : ""}.`); }; return; }
+    if (e.target.id === "autoHR") return autoHomeRuns();
     if (e.target.id === "scaleAll" && page()?.scale) { commit(); P().pages.forEach(g => g.scale = { ...page().scale }); changed({ sheets: true }); toast("Scale applied to every sheet."); }
   };
   const c = cv(); c.addEventListener("pointerdown", onDown); c.addEventListener("pointermove", onMove); c.addEventListener("pointerup", onUp); c.addEventListener("contextmenu", e => e.preventDefault());
@@ -3945,8 +4136,8 @@ function bind() {
     else if (e.target.id === "bsArea") { q.area = +e.target.value || 0; S.breakOpen = true; }
     else return;
     e.stopImmediatePropagation(); markDirty(); renderQuote(); }, true);
-  $("#pane-quote").addEventListener("change", (e) => { if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
-  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "bsAsk") return askReport($("#bsQ").value.trim()); if (e.target.id === "bsClear") { S.breakQ = ""; return renderQuote(); } if (e.target.id === "costScan") return scanReceipt(); if (e.target.id === "costAdd") return costDialog(); const cdx = e.target.closest("[data-costdel]"); if (cdx) { P().costs.splice(+cdx.dataset.costdel, 1); markDirty(); return renderQuote(); } if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
+  $("#pane-quote").addEventListener("change", (e) => { if (e.target.dataset.spec) { S.specOpen = true; return setSpec(e.target.dataset.spec, e.target.value); } if (e.target.id === "bsDim") { S.breakDim = e.target.value; S.breakOpen = true; renderQuote(); return; } if (e.target.dataset.act != null) { (P().actual ||= {})[e.target.dataset.act] = e.target.value === "" ? undefined : +e.target.value; markDirty(); renderQuote(); return; } const k = e.target.dataset.q; if (!k) return; const q = P().quote; q[k] = e.target.type === "checkbox" ? e.target.checked : (e.target.type === "number" ? (e.target.value === "" ? 0 : +e.target.value) : e.target.value); markDirty(); renderQuote(); });
+  $("#pane-quote").onclick = (e) => { if (e.target.id === "pkAdd") { (P().quote.pkgs ||= []).push({ n: "", f: "", v: 0 }); markDirty(); renderQuote(); return; } const pd = e.target.closest("[data-pkdel]"); if (pd) { P().quote.pkgs.splice(+pd.dataset.pkdel, 1); markDirty(); renderQuote(); return; } if (e.target.id === "coLock") return lockBaseline(); if (e.target.id === "bidHandoff") return runExport("handoff"); if (e.target.id === "bsAsk") return askReport($("#bsQ").value.trim()); if (e.target.id === "bsClear") { S.breakQ = ""; return renderQuote(); } if (e.target.id === "costScan") return scanReceipt(); if (e.target.id === "costAdd") return costDialog(); const cdx = e.target.closest("[data-costdel]"); if (cdx) { P().costs.splice(+cdx.dataset.costdel, 1); markDirty(); return renderQuote(); } if (e.target.id === "copySave") return askCopyName(); if (e.target.id === "copyCmp") return compareCopies(); if (e.target.id === "pkRead") return readSupplierQuote(); if (e.target.id === "sqOpen") return compareSuppliers(); if (e.target.id === "specTag") return specTagParts(); if (e.target.id === "qGaps") return showBidGaps(); if (e.target.id === "bidLock") return lockBid(); if (e.target.id === "bidUnlock") return unlockBid(); const cr = e.target.closest("[data-copyrestore]"); if (cr) return restoreBidCopy(cr.dataset.copyrestore); const cdl = e.target.closest("[data-copydel]"); if (cdl) return deleteBidCopy(cdl.dataset.copydel); if (e.target.id === "coXlsx") return runExport("coxlsx"); if (e.target.id === "qWord") runExport("qdocx"); if (e.target.id === "qSign") signOff(); if (e.target.id === "qUnsign") { delete P().quote.sign; markDirty(); renderQuote(); } if (e.target.id === "qPdf") runExport("qpdf"); if (e.target.id === "aiScope") draftScope(); };
   $("#pane-ai").onclick = (e) => { const s = e.target.closest("[data-sug]"); if (s && s.dataset.sug === "__spec") return readSpecBook(); if (s && s.dataset.sug === "__set") return askAboutSet(); if (s && ["__box", "__sched", "__panel"].includes(s.dataset.sug)) { setTool({ __box: "aibox", __sched: "aisched", __panel: "aipanel" }[s.dataset.sug]); return; } if (s) { if (s.dataset.sug === "__scan") askAI("", { scan: true }); else askAI(s.dataset.sug); } if (e.target.id === "askGo") { const v = $("#askBox").value.trim(); if (v) { $("#askBox").value = ""; askAI(v); } } };
   $("#pane-quote").addEventListener("keydown", (e) => { if (e.target.id === "bsQ" && e.key === "Enter") askReport(e.target.value.trim()); });
   $("#pane-ai").onkeydown = (e) => { if (e.target.id === "askBox" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("#askGo").click(); } };
